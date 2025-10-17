@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence, Tuple
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 from sqlalchemy import Select, and_, select
@@ -17,7 +17,7 @@ def _vector_to_blob(vec: Sequence[float]) -> bytes:
     return arr.tobytes(order="C")
 
 
-def _blob_to_vector(blob: bytes) -> List[float]:
+def _blob_to_vector(blob: bytes) -> list[float]:
     """
     Decode float32 bytes back to a Python list[float].
     """
@@ -45,7 +45,9 @@ class EmbeddingsRepository:
         return db.execute(stmt).first() is not None
 
     @staticmethod
-    def fetch_by_dataset(db: Session, dataset_id: int, model_name: str) -> Tuple[List[int], List[List[float]]]:
+    def fetch_by_dataset(
+        db: Session, dataset_id: int, model_name: str
+    ) -> tuple[list[int], list[list[float]]]:
         """
         Return (ids, vectors) where ids are Ticket IDs for the dataset/model.
         """
@@ -53,8 +55,8 @@ class EmbeddingsRepository:
             and_(Embedding.dataset_id == dataset_id, Embedding.model_name == model_name)
         )
         rows = db.execute(stmt).all()
-        ids: List[int] = []
-        vectors: List[List[float]] = []
+        ids: list[int] = []
+        vectors: list[list[float]] = []
         for ticket_id, blob in rows:
             ids.append(int(ticket_id))
             vectors.append(_blob_to_vector(blob))
@@ -65,7 +67,7 @@ class EmbeddingsRepository:
         db: Session,
         dataset_id: int,
         model_name: str,
-        records: Iterable[Tuple[int, Sequence[float]]],
+        records: Iterable[tuple[int, Sequence[float]]],
         batch_size: int = 1000,
     ) -> dict:
         """
@@ -88,11 +90,15 @@ class EmbeddingsRepository:
 
         # Determine which tickets already have embeddings for this dataset/model
         existing_stmt: Select = select(Embedding.ticket_id).where(
-            and_(Embedding.dataset_id == dataset_id, Embedding.model_name == model_name, Embedding.ticket_id.in_(ticket_ids))
+            and_(
+                Embedding.dataset_id == dataset_id,
+                Embedding.model_name == model_name,
+                Embedding.ticket_id.in_(ticket_ids),
+            )
         )
         existing_ids_set = {int(row[0]) for row in db.execute(existing_stmt).all()}
 
-        to_insert: List[Embedding] = []
+        to_insert: list[Embedding] = []
         skipped = 0
         for ticket_id, vec in recs:
             tid_int = int(ticket_id)
@@ -123,15 +129,21 @@ class EmbeddingsRepository:
         return {"inserted": inserted, "skipped": skipped}
 
     @staticmethod
-    def fetch_candidate_texts(db: Session, dataset_id: int, limit: int = 100_000) -> Tuple[List[int], List[str]]:
+    def fetch_candidate_texts(
+        db: Session, dataset_id: int, limit: int = 100_000
+    ) -> tuple[list[int], list[str]]:
         """
         Helper to retrieve candidate ticket texts for embedding:
         - Use normalized_text if present; otherwise fall back to summary.
         Returns aligned (ticket_ids, texts).
         """
-        stmt: Select = select(Ticket.id, Ticket.normalized_text, Ticket.summary).where(Ticket.dataset_id == dataset_id).limit(limit)
-        ids: List[int] = []
-        texts: List[str] = []
+        stmt: Select = (
+            select(Ticket.id, Ticket.normalized_text, Ticket.summary)
+            .where(Ticket.dataset_id == dataset_id)
+            .limit(limit)
+        )
+        ids: list[int] = []
+        texts: list[str] = []
         for tid, norm, summ in db.execute(stmt).all():
             ids.append(int(tid))
             text = (norm or summ or "").strip()

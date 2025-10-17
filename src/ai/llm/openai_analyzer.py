@@ -14,8 +14,8 @@ import os
 import uuid
 from contextlib import suppress
 from types import SimpleNamespace
+from typing import Any
 from urllib.parse import urlparse
-from typing import Any, Dict, List, Optional, Set
 
 from ai.llm.interface import AnalyzerAdapter, AnalyzerError
 from config.env import get_settings, is_tracing_enabled
@@ -24,6 +24,7 @@ from config.env import get_settings, is_tracing_enabled
 try:
     from observability.tracing import tracer  # type: ignore
 except ImportError:
+
     def _noop_tracer() -> Any:  # type: ignore[override]
         return None
 
@@ -41,7 +42,7 @@ except ImportError:
 _LOGGER = logging.getLogger("sd_onboarding")
 
 # Sensitive keys to redact from tool results echoed back to the model
-SENSITIVE_KEYS: Set[str] = {
+SENSITIVE_KEYS: set[str] = {
     "secret",
     "secrets",
     "api_key",
@@ -52,7 +53,7 @@ SENSITIVE_KEYS: Set[str] = {
 }
 
 
-def _build_messages(context: str, question: str, comparison_mode: bool) -> List[dict]:
+def _build_messages(context: str, question: str, comparison_mode: bool) -> list[dict]:
     """
     Build a conservative, structured system+user prompt for chat.completions.
     No secrets or dynamic code is injected. Deterministic message ordering.
@@ -71,11 +72,7 @@ def _build_messages(context: str, question: str, comparison_mode: bool) -> List[
         {"role": "system", "content": system_preamble},
         {
             "role": "user",
-            "content": (
-                f"Question: {question.strip()}\n\n"
-                "Context:\n"
-                f"{context.strip()}"
-            ),
+            "content": (f"Question: {question.strip()}\n\n" "Context:\n" f"{context.strip()}"),
         },
     ]
 
@@ -90,12 +87,12 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _build_tool_specs_from_registry(registry: Any) -> List[Dict[str, Any]]:
+def _build_tool_specs_from_registry(registry: Any) -> list[dict[str, Any]]:
     """
     Build OpenAI function tool specs from registry input schemas.
     Uses Pydantic model_json_schema() and enforces Draft 2020-12 compatible shapes.
     """
-    specs: List[Dict[str, Any]] = []
+    specs: list[dict[str, Any]] = []
     # Introspect registry tools map; strictly whitelisted
     tools_map = getattr(registry, "_tools", {})  # internal map; stable in our implementation
     for name, spec in tools_map.items():
@@ -134,7 +131,7 @@ def _sanitize_for_model(data: Any) -> Any:
     Remove potential secrets/PII keys before echoing tool result to the model context.
     """
     if isinstance(data, dict):
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         for k, v in data.items():
             k_norm = str(k).lower().strip()
             if all(s not in k_norm for s in SENSITIVE_KEYS):
@@ -146,9 +143,9 @@ def _sanitize_for_model(data: Any) -> Any:
 
 
 def _append_tool_result_message(
-    history: List[Dict[str, Any]],
+    history: list[dict[str, Any]],
     tool_call_id: str,
-    result: Dict[str, Any],
+    result: dict[str, Any],
 ) -> None:
     """
     Append a 'tool' role message with sanitized JSON content.
@@ -157,9 +154,7 @@ def _append_tool_result_message(
         {
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "content": json.dumps(
-                _sanitize_for_model(result), ensure_ascii=False
-            ),
+            "content": json.dumps(_sanitize_for_model(result), ensure_ascii=False),
         }
     )
 
@@ -167,10 +162,10 @@ def _append_tool_result_message(
 def _build_tool_context_from_claims_or_params(
     *,
     request_id: str,
-    args: Dict[str, Any],
-    token_budget: Optional[int],
-    step_limit: Optional[int],
-    claims: Optional[Dict[str, Any]] = None,
+    args: dict[str, Any],
+    token_budget: int | None,
+    step_limit: int | None,
+    claims: dict[str, Any] | None = None,
 ) -> Any:
     # Import registry helpers dynamically to avoid import-time failures in offline environments
     build_ctx = None
@@ -180,7 +175,7 @@ def _build_tool_context_from_claims_or_params(
         build_ctx = getattr(mod, "build_tool_context_from_claims", None)
         tool_context_cls = getattr(mod, "ToolContext", None)
 
-    dataset_id: Optional[int] = None
+    dataset_id: int | None = None
     try:
         if "dataset_id" in args and args["dataset_id"] is not None:
             dataset_id = int(args["dataset_id"])
@@ -231,10 +226,10 @@ class OpenAIAnalyzer(AnalyzerAdapter):
 
     def __init__(
         self,
-        registry: Optional[Any] = None,
-        enable_tools: Optional[bool] = None,
-        token_budget: Optional[int] = None,
-        step_limit: Optional[int] = None,
+        registry: Any | None = None,
+        enable_tools: bool | None = None,
+        token_budget: int | None = None,
+        step_limit: int | None = None,
     ) -> None:
         # Lazy import openai client to avoid static import errors when dependency is not installed.
         if importlib.util.find_spec("openai") is None:
@@ -242,8 +237,8 @@ class OpenAIAnalyzer(AnalyzerAdapter):
                 "OpenAI Python SDK is not installed. Install 'openai' to use the OpenAI analyzer."
             )
         mod = importlib.import_module("openai")
-        openai_cls = getattr(mod, "OpenAI")
-        azure_openai_cls = getattr(mod, "AzureOpenAI")
+        openai_cls = mod.OpenAI
+        azure_openai_cls = mod.AzureOpenAI
 
         self._openai_cls = openai_cls  # type: ignore[attr-defined]
         self._azure_openai_cls = azure_openai_cls  # type: ignore[attr-defined]
@@ -251,14 +246,14 @@ class OpenAIAnalyzer(AnalyzerAdapter):
         # Load settings early (.env via Pydantic);
         # provide fallbacks via legacy env keys where needed
         self._settings = get_settings()
-        self._azure_endpoint: Optional[str] = None
+        self._azure_endpoint: str | None = None
 
         # Detect provider intent (prefer Azure when any Azure config provided)
         self._provider = self._detect_provider()
         self._client = self._create_client()
 
         # Tools/agent loop configuration
-        self._registry: Optional[Any] = registry
+        self._registry: Any | None = registry
         # tools path only when registry present AND enable_tools explicitly True
         self._tools_enabled: bool = self._registry is not None and enable_tools is True
         # Budgets
@@ -266,10 +261,8 @@ class OpenAIAnalyzer(AnalyzerAdapter):
         # token budget: prefer explicit param, else env TOOL_TOKEN_BUDGET,
         # else None (no explicit cap beyond model limits)
         env_tb = os.getenv("TOOL_TOKEN_BUDGET")
-        self._token_budget: Optional[int] = (
-            token_budget
-            if token_budget is not None
-            else (int(env_tb) if env_tb else None)
+        self._token_budget: int | None = (
+            token_budget if token_budget is not None else (int(env_tb) if env_tb else None)
         )
 
         # Observability flags
@@ -426,8 +419,8 @@ class OpenAIAnalyzer(AnalyzerAdapter):
         self,
         *,
         model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
     ):
         """
         Perform a single chat.completions call with optional tools.
@@ -447,18 +440,16 @@ class OpenAIAnalyzer(AnalyzerAdapter):
                 span.set_attribute("step_limit", self._step_limit)
                 # type: ignore[attr-defined]
                 span.set_attribute("token_budget", int(self._token_budget or 0))
-                kwargs: Dict[str, Any] = {
+                request_kwargs: dict[str, Any] = {
                     "model": model,
                     "messages": messages,
                     "temperature": 0.2,
                     "top_p": 0.9,
                 }
                 if tools:
-                    kwargs["tools"] = tools
-                    kwargs["tool_choice"] = "auto"
-                resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
-                    **kwargs
-                )
+                    request_kwargs["tools"] = tools
+                    request_kwargs["tool_choice"] = "auto"
+                resp = self._client.chat.completions.create(**request_kwargs)  # type: ignore[attr-defined]
                 # Metrics: token usage if available
                 with suppress(Exception):
                     usage = getattr(resp, "usage", None)
@@ -467,18 +458,16 @@ class OpenAIAnalyzer(AnalyzerAdapter):
                         ANALYSIS_TOKEN_USAGE.inc(total_tokens)  # pragma: no cover
                 return resp
         else:
-            kwargs: Dict[str, Any] = {
+            fallback_kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
                 "temperature": 0.2,
                 "top_p": 0.9,
             }
             if tools:
-                kwargs["tools"] = tools
-                kwargs["tool_choice"] = "auto"
-            resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
-                **kwargs
-            )
+                fallback_kwargs["tools"] = tools
+                fallback_kwargs["tool_choice"] = "auto"
+            resp = self._client.chat.completions.create(**fallback_kwargs)  # type: ignore[attr-defined]
             # Metrics: token usage if available
             with suppress(Exception):
                 usage = getattr(resp, "usage", None)
@@ -519,7 +508,7 @@ class OpenAIAnalyzer(AnalyzerAdapter):
 
         # Tool-enabled agent loop
         run_request_id = str(uuid.uuid4())
-        executed_ids: Set[str] = set()
+        executed_ids: set[str] = set()
         total_steps = 0
         tools = _build_tool_specs_from_registry(self._registry)
         cum_tokens = 0
@@ -583,12 +572,10 @@ class OpenAIAnalyzer(AnalyzerAdapter):
                         with suppress(Exception):
                             usage = getattr(resp, "usage", None)
                             step_tokens = (
-                                int(getattr(usage, "total_tokens", 0) or 0)
-                                if usage
-                                else 0
+                                int(getattr(usage, "total_tokens", 0) or 0) if usage else 0
                             )
                             cum_tokens += step_tokens
-                        
+
                         if self._token_budget is not None and cum_tokens > self._token_budget:
                             err_payload = {
                                 "error": {
@@ -766,7 +753,7 @@ class OpenAIAnalyzer(AnalyzerAdapter):
                         usage = getattr(resp, "usage", None)
                         step_tokens = int(getattr(usage, "total_tokens", 0) or 0) if usage else 0
                         cum_tokens += step_tokens
-                    
+
                     if self._token_budget is not None and cum_tokens > self._token_budget:
                         err_payload = {
                             "error": {
@@ -939,7 +926,7 @@ class OpenAIAnalyzer(AnalyzerAdapter):
                     usage = getattr(resp, "usage", None)
                     step_tokens = int(getattr(usage, "total_tokens", 0) or 0) if usage else 0
                     cum_tokens += step_tokens
-                if 'step_tokens' not in locals():
+                if "step_tokens" not in locals():
                     step_tokens = 0
                 if self._token_budget is not None and cum_tokens > self._token_budget:
                     err_payload = {

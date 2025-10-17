@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
-
 import pandas as pd
 
 
@@ -30,7 +28,7 @@ def _clean_str_series(s: pd.Series) -> pd.Series:
     return s
 
 
-def compute_quality_distribution(df: pd.DataFrame) -> Dict[str, int]:
+def compute_quality_distribution(df: pd.DataFrame) -> dict[str, int]:
     """
     Compute distribution for ticket quality labels.
 
@@ -49,7 +47,7 @@ def compute_quality_distribution(df: pd.DataFrame) -> Dict[str, int]:
     return {str(k): int(v) for k, v in counts.to_dict().items()}
 
 
-def compute_complexity_distribution(df: pd.DataFrame) -> Dict[str, int]:
+def compute_complexity_distribution(df: pd.DataFrame) -> dict[str, int]:
     """
     Compute distribution for ticket resolution complexity labels.
 
@@ -67,7 +65,7 @@ def compute_complexity_distribution(df: pd.DataFrame) -> Dict[str, int]:
     return {str(k): int(v) for k, v in counts.to_dict().items()}
 
 
-def compute_department_volume(df: pd.DataFrame, top_n: int = 10) -> List[tuple[str, int]]:
+def compute_department_volume(df: pd.DataFrame, top_n: int = 10) -> list[tuple[str, int]]:
     """
     Compute top-N department volumes as a sorted list of (department, count).
 
@@ -91,7 +89,7 @@ def compute_department_volume(df: pd.DataFrame, top_n: int = 10) -> List[tuple[s
     return items
 
 
-def compute_reassignment_distribution(df: pd.DataFrame) -> Dict[int, int]:
+def compute_reassignment_distribution(df: pd.DataFrame) -> dict[int, int]:
     """
     Compute distribution for reassignment group counts.
 
@@ -116,7 +114,7 @@ def compute_reassignment_distribution(df: pd.DataFrame) -> Dict[int, int]:
     return {int(k): int(v) for k, v in counts.to_dict().items()}
 
 
-def compute_product_distribution(df: pd.DataFrame) -> List[tuple[str, int]]:
+def compute_product_distribution(df: pd.DataFrame) -> list[tuple[str, int]]:
     """
     Compute product distribution as a list of (product, count) across all products.
 

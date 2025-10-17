@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 # Import types lazily inside functions to avoid hard failures when optional deps are not installed
 # This module is safe to import regardless of whether OpenTelemetry is installed.
 from fastapi import FastAPI
-from config.settings import AppSettings
 
+from config.settings import AppSettings
 
 _SERVICE_NAME = "sd-onboarding-analyzer"
 _LOGGER = logging.getLogger("sd_onboarding")
@@ -50,10 +49,10 @@ def init_tracing(settings: AppSettings) -> None:
     try:
         # Local imports to avoid module import errors if optional deps are not installed
         from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     except Exception as e:
         _LOGGER.warning("OpenTelemetry packages not available; tracing disabled: %s", e)
         return
@@ -101,7 +100,7 @@ def instrument_fastapi_app(app: FastAPI) -> None:
         _LOGGER.warning("Failed to instrument FastAPI with OpenTelemetry: %s", e)
 
 
-def tracer() -> Optional["object"]:
+def tracer() -> object | None:
     """
     Convenience accessor to get a tracer for manual spans.
 
@@ -109,6 +108,7 @@ def tracer() -> Optional["object"]:
     """
     try:
         from opentelemetry import trace
+
         return trace.get_tracer(_SERVICE_NAME)
     except Exception:
         return None
@@ -122,6 +122,7 @@ def shutdown_tracing() -> None:
     """
     try:
         from opentelemetry import trace
+
         provider = trace.get_tracer_provider()
         # Some providers implement shutdown(); guard with hasattr
         if hasattr(provider, "shutdown"):

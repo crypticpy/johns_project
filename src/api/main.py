@@ -1,22 +1,24 @@
 import logging
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from config.env import get_settings
-from api.routers.ingest import router as ingest_router
-from api.routers.embed import router as embed_router
-from api.routers.search import router as search_router
+
+from api.routers.analysis import router as analysis_router
 from api.routers.analytics import router as analytics_router
 from api.routers.cluster import router as cluster_router
-from api.routers.analysis import router as analysis_router
+from api.routers.embed import router as embed_router
 from api.routers.history import router as history_router
-from api.routers.reports import router as reports_router
+from api.routers.ingest import router as ingest_router
 from api.routers.metrics import router as metrics_router
+from api.routers.reports import router as reports_router
+from api.routers.search import router as search_router
+from config.env import get_settings
 from db.session import init_db
-from utils.logging import init_logging
 from observability.metrics import MetricsMiddleware
 from observability.tracing import init_tracing, instrument_fastapi_app, shutdown_tracing, tracer
+from utils.logging import init_logging
 
 
 def create_app() -> FastAPI:
@@ -24,7 +26,11 @@ def create_app() -> FastAPI:
 
     # Initialize structured logging early; safe fallback inside init_logging
     try:
-        cfg_path = str(settings.logging_config_path) if settings.logging_config_path else "src/config/logging.yaml"
+        cfg_path = (
+            str(settings.logging_config_path)
+            if settings.logging_config_path
+            else "src/config/logging.yaml"
+        )
         init_logging(cfg_path)
     except Exception:
         # Never fail app creation due to logging config

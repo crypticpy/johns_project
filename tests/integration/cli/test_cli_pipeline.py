@@ -94,9 +94,7 @@ def test_cli_pipeline_module_run(tmp_path: Path) -> None:
     # The pipeline prints final report markdown unless --out is provided
     # Accept either report header or analytics snapshot section
     assert (
-        "# Dataset Report" in out
-        or "## Current Analytics Snapshot" in out
-        or "analysis_id" in out
+        "# Dataset Report" in out or "## Current Analytics Snapshot" in out or "analysis_id" in out
     ), f"Unexpected CLI output:\n{out}"
 
 
@@ -129,10 +127,21 @@ def test_run_pipeline_direct_helpers(tmp_path: Path) -> None:
     )
 
     assert isinstance(result, dict), "run_pipeline did not return a dict"
-    for key in ("dataset_id", "analysis_id", "report_markdown", "ingest", "embed", "analysis", "report"):
+    for key in (
+        "dataset_id",
+        "analysis_id",
+        "report_markdown",
+        "ingest",
+        "embed",
+        "analysis",
+        "report",
+    ):
         assert key in result, f"Missing key in pipeline result: {key}"
     assert isinstance(result["dataset_id"], int)
     assert isinstance(result["analysis_id"], int)
     assert isinstance(result["report_markdown"], str)
     assert result["report_markdown"], "Empty report_markdown"
-    assert "## Current Analytics Snapshot" in result["report_markdown"] or "# Dataset Report" in result["report_markdown"]
+    assert (
+        "## Current Analytics Snapshot" in result["report_markdown"]
+        or "# Dataset Report" in result["report_markdown"]
+    )

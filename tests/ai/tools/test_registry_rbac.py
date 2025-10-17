@@ -10,8 +10,7 @@ if str(SRC_PATH) not in sys.path:
 
 import pytest
 
-from ai.llm.tools.registry import ToolRegistry
-from ai.llm.tools.registry import ToolContext
+from ai.llm.tools.registry import ToolContext, ToolRegistry
 
 
 @pytest.mark.unit

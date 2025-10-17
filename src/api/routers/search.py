@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -17,7 +17,7 @@ from vector_store.faiss_index import FaissIndexAdapter, FaissIndexError
 router = APIRouter(prefix="/search", tags=["search"])
 
 
-def _determine_backend_from_model(model_name: str | None) -> Optional[str]:
+def _determine_backend_from_model(model_name: str | None) -> str | None:
     """
     Heuristic: choose embeddings backend based on the model name recorded in FAISS metadata.
     - builtin-* -> 'builtin'
@@ -51,8 +51,8 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
         raise HTTPException(status_code=400, detail="dataset_id is required")
     try:
         dataset_id = int(dataset_id_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="dataset_id must be a positive integer")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="dataset_id must be a positive integer") from e
     if dataset_id <= 0:
         raise HTTPException(status_code=400, detail="dataset_id must be a positive integer")
 
@@ -63,19 +63,19 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
     k_val = qp.get("k", "10")
     try:
         k = int(k_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="k must be a positive integer")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="k must be a positive integer") from e
     if k <= 0:
         raise HTTPException(status_code=400, detail="k must be a positive integer")
 
-    departments: Optional[List[str]] = list(qp.getlist("department")) or None
-    products: Optional[List[str]] = list(qp.getlist("product")) or None
+    departments: list[str] | None = list(qp.getlist("department")) or None
+    products: list[str] | None = list(qp.getlist("product")) or None
 
     # Optional rerank flags
     rerank_flag_raw = qp.get("rerank", "false")
     rerank_flag: bool = str(rerank_flag_raw).strip().lower() in ("1", "true", "yes", "on")
     rerank_backend_in = qp.get("rerank_backend")
-    rerank_backend_norm: Optional[str] = None
+    rerank_backend_norm: str | None = None
     if rerank_backend_in:
         rb = rerank_backend_in.strip().lower()
         if rb in ("builtin", "lexical"):
@@ -109,7 +109,7 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
     try:
         vecs = embedder.embed_texts([q or ""], model=model_name, batch_size=32)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Embedding backend error: {e}")
+        raise HTTPException(status_code=502, detail=f"Embedding backend error: {e}") from e
     if not vecs or not isinstance(vecs[0], list) or len(vecs[0]) == 0:
         raise HTTPException(status_code=500, detail="Embedding adapter returned invalid vector")
 
@@ -117,13 +117,15 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
 
     # Run FAISS search
     try:
-        nn: List[Tuple[int, float]] = index.search(dataset_id=dataset_id, vector=query_vec, k=int(k))
+        nn: list[tuple[int, float]] = index.search(
+            dataset_id=dataset_id, vector=query_vec, k=int(k)
+        )
     except FaissIndexError as e:
         # Missing index or dim mismatch -> 404/409 depending on message
         msg = str(e)
         if "does not exist" in msg:
-            raise HTTPException(status_code=404, detail=msg)
-        raise HTTPException(status_code=409, detail=f"FAISS index error: {msg}")
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=409, detail=f"FAISS index error: {msg}") from e
 
     if not nn:
         payload = {
@@ -139,21 +141,25 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
 
     # Preserve order from FAISS by building id -> score map
     ordered_ids = [tid for tid, _ in nn]
-    score_map: Dict[int, float] = {tid: float(score) for tid, score in nn}
+    score_map: dict[int, float] = {tid: float(score) for tid, score in nn}
 
     # Fetch matched tickets (single query)
-    stmt: Select = select(Ticket).where(and_(Ticket.id.in_(ordered_ids), Ticket.dataset_id == dataset_id))
-    rows: List[Ticket] = list(db.execute(stmt).scalars().all())
-    by_id: Dict[int, Ticket] = {int(t.id): t for t in rows}
+    stmt: Select = select(Ticket).where(
+        and_(Ticket.id.in_(ordered_ids), Ticket.dataset_id == dataset_id)
+    )
+    rows: list[Ticket] = list(db.execute(stmt).scalars().all())
+    by_id: dict[int, Ticket] = {int(t.id): t for t in rows}
 
     # Optional rerank of top-k candidates
     if rerank_flag:
         try:
             reranker = select_reranker(rerank_backend_norm)  # type: ignore[arg-type]
         except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Rerank backend selection failed: {e}")
+            raise HTTPException(
+                status_code=503, detail=f"Rerank backend selection failed: {e}"
+            ) from e
 
-        candidates: List[Tuple[int, str]] = []
+        candidates: list[tuple[int, str]] = []
         for tid in ordered_ids:
             t = by_id.get(int(tid))
             if t is None:
@@ -165,9 +171,9 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
         try:
             reranked = reranker.rerank(q, candidates)
         except RerankError as e:
-            raise HTTPException(status_code=503, detail=str(e))
+            raise HTTPException(status_code=503, detail=str(e)) from e
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Rerank error: {e}")
+            raise HTTPException(status_code=502, detail=f"Rerank error: {e}") from e
 
         # Replace ordering and score map with reranked results
         ordered_ids = [tid for tid, _ in reranked]
@@ -177,7 +183,7 @@ async def knn_search(request: Request, db: Session = Depends(get_session)) -> JS
     dept_set = set([d for d in (departments or []) if d is not None])
     prod_set = set([p for p in (products or []) if p is not None])
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for tid in ordered_ids:
         t = by_id.get(int(tid))
         if t is None:

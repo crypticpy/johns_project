@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ from security.auth import require_roles
 router = APIRouter(prefix="/history", tags=["history"])
 
 
-def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+def _parse_iso_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     s = str(value).strip()
@@ -23,15 +23,15 @@ def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
         if len(s) <= 10 and "-" in s and "T" not in s:
             return datetime.fromisoformat(s + "T00:00:00")
         return datetime.fromisoformat(s)
-    except Exception:
-        raise HTTPException(status_code=400, detail=f"Invalid ISO datetime: {value}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid ISO datetime: {value}") from e
 
 
 @router.get("/analyses", response_class=JSONResponse)
 async def list_analyses_history(
     request: Request,
     db: Session = Depends(get_session),
-    claims: Dict[str, Any] = Depends(require_roles({"viewer", "admin"})),
+    claims: dict[str, Any] = Depends(require_roles({"viewer", "admin"})),
 ) -> JSONResponse:
     """
     Paginated analyses history with filters.
@@ -47,21 +47,21 @@ async def list_analyses_history(
     try:
         limit = int(limit_val)
         offset = int(offset_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="limit and offset must be integers")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="limit and offset must be integers") from e
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset must be >= 0")
 
     # Optional filters
-    dataset_id: Optional[int] = None
+    dataset_id: int | None = None
     dataset_id_val = qp.get("dataset_id")
     if dataset_id_val is not None:
         try:
             dataset_id = int(dataset_id_val)
-        except Exception:
-            raise HTTPException(status_code=400, detail="dataset_id must be an integer")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="dataset_id must be an integer") from e
 
     prompt_version = qp.get("prompt_version") or None
 
@@ -87,7 +87,7 @@ async def list_analyses_history(
         date_to=dt,
     )
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     for r in rows:
         items.append(
             {

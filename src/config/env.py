@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 # Optional: lightweight python-dotenv fallback for local dev.
 # Pydantic Settings already reads .env via env_file, but this ensures early availability if imported before settings.
@@ -15,10 +14,11 @@ except Exception:
     pass
 
 # Re-export Settings and accessor from the existing settings module
-from config.settings import AppSettings as Settings, get_settings
+from config.settings import AppSettings as Settings
+from config.settings import get_settings
 
 
-def get_azure_openai_endpoint() -> Optional[str]:
+def get_azure_openai_endpoint() -> str | None:
     """
     Return Azure OpenAI endpoint or None.
     """
@@ -29,7 +29,7 @@ def get_azure_openai_endpoint() -> Optional[str]:
         return None
 
 
-def get_azure_openai_key() -> Optional[str]:
+def get_azure_openai_key() -> str | None:
     """
     Return Azure OpenAI API key or None.
     """
@@ -45,7 +45,7 @@ def get_azure_openai_deployment() -> str:
     return (s.azure_openai_deployment or "gpt-5").strip()
 
 
-def get_openai_api_key() -> Optional[str]:
+def get_openai_api_key() -> str | None:
     """
     Return standard OpenAI API key or None.
     """

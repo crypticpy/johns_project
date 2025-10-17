@@ -6,17 +6,15 @@ strict typing suitable for offline/CI environments.
 """
 
 import os
-from typing import List
 
 import numpy as np
-from ai.embeddings.interface import EmbeddingsAdapter, EmbeddingError
+
+from ai.embeddings.interface import EmbeddingError, EmbeddingsAdapter
 
 try:
     from sentence_transformers import SentenceTransformer  # type: ignore
 except Exception as e:  # pragma: no cover
-    raise EmbeddingError(
-        f"sentence-transformers is not installed or failed to import: {e}"
-    ) from e
+    raise EmbeddingError(f"sentence-transformers is not installed or failed to import: {e}") from e
 
 
 def _map_model_name(model: str) -> str:
@@ -54,8 +52,7 @@ class SentenceTransformersEmbedder(EmbeddingsAdapter):
 
         # Detect offline mode envs
         offline = (
-            os.environ.get("TRANSFORMERS_OFFLINE") == "1"
-            or os.environ.get("HF_HUB_OFFLINE") == "1"
+            os.environ.get("TRANSFORMERS_OFFLINE") == "1" or os.environ.get("HF_HUB_OFFLINE") == "1"
         )
         try:
             # Attempt to load model; if offline and not cached, ST will throw OSError/ConnectionError.
@@ -63,19 +60,17 @@ class SentenceTransformersEmbedder(EmbeddingsAdapter):
         except Exception as e:
             if offline:
                 raise EmbeddingError(
-                    (
-                        f"Model '{resolved}' not available in local cache while offline. "
-                        "Please pre-download the SentenceTransformers model or "
-                        "switch backend to 'builtin'. "
-                        f"Original error: {e}"
-                    )
+                    f"Model '{resolved}' not available in local cache while offline. "
+                    "Please pre-download the SentenceTransformers model or "
+                    "switch backend to 'builtin'. "
+                    f"Original error: {e}"
                 ) from e
             # Online or unknown error: surface a clear message
             raise EmbeddingError(
                 f"Failed to load SentenceTransformers model '{resolved}': {e}"
             ) from e
 
-    def embed_texts(self, items: List[str], model: str, batch_size: int) -> List[List[float]]:
+    def embed_texts(self, items: list[str], model: str, batch_size: int) -> list[list[float]]:
         if items is None:
             raise EmbeddingError("items must not be None")
         # Defensive batch sizing

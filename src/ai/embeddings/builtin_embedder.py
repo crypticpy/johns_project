@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import List
 
-from ai.embeddings.interface import EmbeddingsAdapter, EmbeddingError
+from ai.embeddings.interface import EmbeddingError, EmbeddingsAdapter
 
 
-def _normalize(vec: List[float]) -> List[float]:
+def _normalize(vec: list[float]) -> list[float]:
     """L2-normalize a vector; return zero vector unchanged if norm == 0."""
     norm = math.sqrt(sum(x * x for x in vec))
     if norm == 0.0:
@@ -28,7 +27,7 @@ def _hash_to_index(token: str, dim: int) -> int:
     return idx
 
 
-def _embed_text(text: str, dim: int) -> List[float]:
+def _embed_text(text: str, dim: int) -> list[float]:
     """
     Deterministic embedding:
     - Lowercase, simple whitespace tokenization
@@ -86,14 +85,14 @@ class BuiltinEmbedder(EmbeddingsAdapter):
         # Default and "builtin-384"
         return 384
 
-    def embed_texts(self, items: List[str], model: str, batch_size: int) -> List[List[float]]:
+    def embed_texts(self, items: list[str], model: str, batch_size: int) -> list[list[float]]:
         if items is None:
             raise EmbeddingError("items must not be None")
         dim = self._dim_from_model(model)
         # Defensive batch sizing
         bs = max(1, min(int(batch_size) if batch_size else 32, 1024))
 
-        results: List[List[float]] = []
+        results: list[list[float]] = []
         for i in range(0, len(items), bs):
             batch = items[i : i + bs]
             for text in batch:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 class EmbeddingError(RuntimeError):
@@ -26,5 +26,4 @@ class EmbeddingsAdapter(Protocol):
         List of embedding vectors, each a list[float] of equal dimension.
     """
 
-    def embed_texts(self, items: List[str], model: str, batch_size: int) -> List[List[float]]:
-        ...
+    def embed_texts(self, items: list[str], model: str, batch_size: int) -> list[list[float]]: ...

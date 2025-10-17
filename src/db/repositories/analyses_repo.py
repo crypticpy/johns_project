@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
@@ -28,8 +28,8 @@ class AnalysesRepository:
         question: str,
         result_markdown: str,
         ticket_count: int,
-        metrics: Dict[str, Any] | None = None,
-        filters: Dict[str, Any] | None = None,
+        metrics: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> int:
         """
         Persist an analysis record and return its primary key.
@@ -66,11 +66,11 @@ class AnalysesRepository:
         *,
         limit: int = 50,
         offset: int = 0,
-        dataset_id: Optional[int] = None,
-        prompt_version: Optional[str] = None,
-        date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None,
-    ) -> List[Analysis]:
+        dataset_id: int | None = None,
+        prompt_version: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[Analysis]:
         """
         List analyses with optional filters and pagination.
 
@@ -97,17 +97,21 @@ class AnalysesRepository:
         if conditions:
             stmt = stmt.where(and_(*conditions))
 
-        stmt = stmt.order_by(Analysis.created_at.desc(), Analysis.id.desc()).limit(int(limit)).offset(int(offset))
+        stmt = (
+            stmt.order_by(Analysis.created_at.desc(), Analysis.id.desc())
+            .limit(int(limit))
+            .offset(int(offset))
+        )
         return list(db.execute(stmt).scalars().all())
 
     @staticmethod
     def count_analyses(
         db: Session,
         *,
-        dataset_id: Optional[int] = None,
-        prompt_version: Optional[str] = None,
-        date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None,
+        dataset_id: int | None = None,
+        prompt_version: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> int:
         """
         Count analyses matching the given filters.

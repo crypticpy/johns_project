@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
-
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "prompts" / "templates"
 META_SUFFIX = ".meta.json"
@@ -44,7 +42,7 @@ def _meta_path(version: str) -> Path:
     return TEMPLATES_DIR / f"{_safe_version_name(version)}{META_SUFFIX}"
 
 
-def list_versions() -> List[str]:
+def list_versions() -> list[str]:
     """
     List available prompt template versions (file-based).
 
@@ -52,7 +50,7 @@ def list_versions() -> List[str]:
         Sorted list of version names (without suffix), e.g., ["v1", "experiment-2024.10"].
     """
     _ensure_templates_dir()
-    versions: List[str] = []
+    versions: list[str] = []
     for p in TEMPLATES_DIR.glob(f"*{CONTENT_SUFFIX}"):
         name = p.name
         if name.endswith(CONTENT_SUFFIX):
@@ -77,7 +75,7 @@ def load_template(version: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def save_template(version: str, metadata: Optional[Dict[str, object]] = None) -> Dict[str, object]:
+def save_template(version: str, metadata: dict[str, object] | None = None) -> dict[str, object]:
     """
     Save a template and optional metadata.
 
@@ -98,7 +96,7 @@ def save_template(version: str, metadata: Optional[Dict[str, object]] = None) ->
     content_written = False
     meta_written = False
 
-    content: Optional[str] = None
+    content: str | None = None
     if metadata and isinstance(metadata.get("template"), str):
         content = str(metadata["template"])
 

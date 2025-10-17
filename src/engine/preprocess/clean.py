@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable, List, Tuple
+from collections.abc import Iterable
 
 import pandas as pd
 
-
-EMAIL_PATTERN = re.compile(
-    r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b"
-)
-PHONE_PATTERN = re.compile(
-    r"(?x)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}"
-)
+EMAIL_PATTERN = re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b")
+PHONE_PATTERN = re.compile(r"(?x)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}")
 
 
 def clean_text(s: str, *, lowercase: bool = False) -> str:
@@ -71,7 +66,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     # Work on a copy to keep function pure
     df_norm = df.copy()
 
-    def ensure_column(canon: str, variants: List[str]) -> None:
+    def ensure_column(canon: str, variants: list[str]) -> None:
         """
         Merge/rename variants into a canonical column. If the canonical already exists,
         fill its NaN values from any variant columns, then drop the variants.
@@ -111,7 +106,13 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     )
     ensure_column(
         "Assignment Group",
-        ["Assignment Group", "Assignment_Group", "assignment group", "assignment_group", "ASSIGNMENT GROUP"],
+        [
+            "Assignment Group",
+            "Assignment_Group",
+            "assignment group",
+            "assignment_group",
+            "ASSIGNMENT GROUP",
+        ],
     )
     ensure_column(
         "extract_product",
@@ -119,7 +120,14 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     )
     ensure_column(
         "summarize_ticket",
-        ["summarize_ticket", "Summary", "Short description", "short description", "Description", "description"],
+        [
+            "summarize_ticket",
+            "Summary",
+            "Short description",
+            "short description",
+            "Description",
+            "description",
+        ],
     )
     ensure_column(
         "ticket_quality",
@@ -127,7 +135,14 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     )
     ensure_column(
         "resolution_complexity",
-        ["resolution_complexity", "Resolution Complexity", "resolution complexity", "Complexity", "complexity", "historical_similarity"],
+        [
+            "resolution_complexity",
+            "Resolution Complexity",
+            "resolution complexity",
+            "Complexity",
+            "complexity",
+            "historical_similarity",
+        ],
     )
     ensure_column(
         "Reassignment group count tracking_index",

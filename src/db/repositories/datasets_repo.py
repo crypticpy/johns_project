@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,12 +18,8 @@ class DatasetsRepository:
     """
 
     @staticmethod
-    def get_by_hash(db: Session, file_hash: str) -> Optional[Dataset]:
-        return (
-            db.execute(select(Dataset).where(Dataset.file_hash == file_hash))
-            .scalars()
-            .first()
-        )
+    def get_by_hash(db: Session, file_hash: str) -> Dataset | None:
+        return db.execute(select(Dataset).where(Dataset.file_hash == file_hash)).scalars().first()
 
     @staticmethod
     def create_or_get(
@@ -35,7 +29,7 @@ class DatasetsRepository:
         file_hash: str,
         row_count: int,
         department_count: int = 0,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> Dataset:
         """
         Create a dataset row if one does not already exist for the given file_hash.

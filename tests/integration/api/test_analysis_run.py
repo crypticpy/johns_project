@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from db.models import Base
-from db.session import engine, SessionLocal
 from db.repositories.analyses_repo import AnalysesRepository
+from db.session import SessionLocal, engine
 
 
 def _make_csv_bytes() -> bytes:

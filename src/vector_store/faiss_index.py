@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, List, Tuple, Optional
+from typing import Any
 
 import numpy as np
+
 # pylint: disable=E1120,no-value-for-parameter
 
 
@@ -36,7 +37,7 @@ def _should_disable_faiss() -> bool:
     return True
 
 
-def _try_import_faiss() -> Optional[Any]:
+def _try_import_faiss() -> Any | None:
     """
     Lazily import faiss. Return module if available and not disabled, else None.
     Never raise at import time to preserve offline/CI stability.
@@ -142,12 +143,18 @@ class FaissIndexAdapter:
         try:
             return faiss.read_index(str(path))
         except Exception as e:
-            raise FaissIndexError(f"Failed to load FAISS index for dataset {dataset_id}: {e}")
+            raise FaissIndexError(
+                f"Failed to load FAISS index for dataset {dataset_id}: {e}"
+            ) from e
 
     # ---- Public interface ----
 
     def build_index(
-        self, dataset_id: int, vectors: List[List[float]], ids: List[int], model_name: str | None = None
+        self,
+        dataset_id: int,
+        vectors: list[list[float]],
+        ids: list[int],
+        model_name: str | None = None,
     ) -> None:
         """
         Build (or rebuild) the index for a dataset from scratch, overwriting existing index.
@@ -172,9 +179,9 @@ class FaissIndexAdapter:
             # Use FAISS when available
             index = self._create_faiss_index(dim)
             try:
-                getattr(index, "add_with_ids")(xb, xids)
+                index.add_with_ids(xb, xids)
             except Exception as e:
-                raise FaissIndexError(f"Failed to add vectors to FAISS index: {e}")
+                raise FaissIndexError(f"Failed to add vectors to FAISS index: {e}") from e
             # Persist index
             idx_path = self._index_path(dataset_id)
             self._save_faiss_index(index, idx_path)
@@ -185,7 +192,7 @@ class FaissIndexAdapter:
         # Persist metadata
         self._write_meta(dataset_id, dim, model_name or "")
 
-    def add(self, dataset_id: int, vectors: List[List[float]], ids: List[int]) -> None:
+    def add(self, dataset_id: int, vectors: list[list[float]], ids: list[int]) -> None:
         """
         Add vectors/ids to an existing index; creates a new index if none exists.
 
@@ -215,17 +222,19 @@ class FaissIndexAdapter:
             except Exception:
                 existing_dim = dim
             if existing_dim != dim:
-                raise FaissIndexError(f"Vector dimension mismatch: index dim={existing_dim}, vectors dim={dim}")
+                raise FaissIndexError(
+                    f"Vector dimension mismatch: index dim={existing_dim}, vectors dim={dim}"
+                )
 
             try:
                 if hasattr(index, "add_with_ids"):
-                    getattr(index, "add_with_ids")(xb, xids)
+                    index.add_with_ids(xb, xids)
                 else:
                     idmap = faiss_mod.IndexIDMap2(index)
-                    getattr(idmap, "add_with_ids")(xb, xids)
+                    idmap.add_with_ids(xb, xids)
                     index = idmap
             except Exception as e:
-                raise FaissIndexError(f"Failed to add vectors to FAISS index: {e}")
+                raise FaissIndexError(f"Failed to add vectors to FAISS index: {e}") from e
 
             # Persist updated index
             self._save_faiss_index(index, self._index_path(dataset_id))
@@ -244,7 +253,7 @@ class FaissIndexAdapter:
             ids_new = np.concatenate([ids_old, xids], axis=0)
             self._save_npz(dataset_id, vecs_new, ids_new)
 
-    def search(self, dataset_id: int, vector: List[float], k: int) -> List[Tuple[int, float]]:
+    def search(self, dataset_id: int, vector: list[float], k: int) -> list[tuple[int, float]]:
         """
         Search the dataset index for nearest neighbors; returns [(id, score)].
 
@@ -267,12 +276,12 @@ class FaissIndexAdapter:
             try:
                 distances, neighbors = index.search(xq, int(k))
             except Exception as e:
-                raise FaissIndexError(f"FAISS search failed: {e}")
+                raise FaissIndexError(f"FAISS search failed: {e}") from e
 
             # Extract result arrays
             dists = distances[0]
             nns = neighbors[0]
-            out: List[Tuple[int, float]] = []
+            out: list[tuple[int, float]] = []
             for i in range(len(nns)):
                 nid = int(nns[i])
                 if nid == -1:
@@ -308,7 +317,7 @@ class FaissIndexAdapter:
             top_k_unsorted = np.argpartition(-scores, k - 1)[:k]
             top_idx = top_k_unsorted[np.argsort(-scores[top_k_unsorted])]
 
-        results: List[Tuple[int, float]] = []
+        results: list[tuple[int, float]] = []
         for i in top_idx:
             results.append((int(ids[i]), float(scores[i])))
         return results

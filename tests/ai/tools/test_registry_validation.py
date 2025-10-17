@@ -10,8 +10,7 @@ if str(SRC_PATH) not in sys.path:
 
 import pytest
 
-from ai.llm.tools.registry import ToolRegistry
-from ai.llm.tools.registry import ToolContext
+from ai.llm.tools.registry import ToolContext, ToolRegistry
 
 
 @pytest.mark.unit
@@ -42,7 +41,9 @@ def test_search_nn_invalid_args_validation_error(registry: ToolRegistry, ctx_vie
 
 
 @pytest.mark.unit
-def test_analysis_run_missing_required_field_validation_error(registry: ToolRegistry, ctx_analyst: ToolContext):
+def test_analysis_run_missing_required_field_validation_error(
+    registry: ToolRegistry, ctx_analyst: ToolContext
+):
     """
     Missing required 'question' for tool.analysis.run should return category='validation_error'.
     """

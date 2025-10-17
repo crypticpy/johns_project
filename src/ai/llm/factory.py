@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 from ai.llm.interface import AnalyzerAdapter, AnalyzerError
 from ai.llm.offline_analyzer import OfflineAnalyzer
@@ -40,7 +40,9 @@ def _has_openai_creds() -> bool:
         return True
 
     # Azure-style envs (prefer APP_* names)
-    azure_endpoint = os.environ.get("APP_AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_OPENAI_ENDPOINT")
+    azure_endpoint = os.environ.get("APP_AZURE_OPENAI_ENDPOINT") or os.environ.get(
+        "AZURE_OPENAI_ENDPOINT"
+    )
     azure_key = (
         os.environ.get("APP_AZURE_OPENAI_KEY")
         or os.environ.get("AZURE_OPENAI_API_KEY")
@@ -79,20 +81,23 @@ def select_analyzer(backend: Literal["openai", "offline"] | None = None) -> Anal
     if chosen == "openai":
         # Guardrails: require credentials
         if not _has_openai_creds():
-            raise AnalyzerError("OpenAI analyzer requested but credentials are not configured in environment")
+            raise AnalyzerError(
+                "OpenAI analyzer requested but credentials are not configured in environment"
+            )
         # Import lazily to avoid import-time deps in offline CI
         try:
             from ai.llm.openai_analyzer import OpenAIAnalyzer  # type: ignore
         except Exception as e:
-            raise AnalyzerError(f"OpenAI analyzer module unavailable: {e}")
+            raise AnalyzerError(f"OpenAI analyzer module unavailable: {e}") from e
         # Minimal factory wiring: optionally inject ToolRegistry and enable tools when flag is set
         enable_tools = _env_flag("APP_ENABLE_TOOLS", False)
         if enable_tools:
             try:
                 # Construct a default registry singleton for this process via dynamic import
                 import importlib
+
                 mod = importlib.import_module("ai.llm.tools.registry")
-                ToolRegistry = getattr(mod, "ToolRegistry")
+                ToolRegistry = mod.ToolRegistry
                 registry = ToolRegistry()  # type: ignore[call-arg]
                 analyzer = OpenAIAnalyzer()
                 # Minimal wiring without changing constructor signature expectations

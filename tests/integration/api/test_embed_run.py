@@ -9,10 +9,8 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from db.models import Base
-from db.session import engine, SessionLocal
-from db.repositories.datasets_repo import DatasetsRepository
-from db.repositories.tickets_repo import TicketsRepository
 from db.repositories.embeddings_repo import EmbeddingsRepository
+from db.session import SessionLocal, engine
 
 
 def _make_csv_bytes() -> bytes:

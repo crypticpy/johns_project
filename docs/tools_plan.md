@@ -42,7 +42,7 @@ Integration extensions to add:
 References
 - App wiring: [src/api/main.py](src/api/main.py)
 - Analyzer adapters: [src/ai/llm/openai_analyzer.py](src/ai/llm/openai_analyzer.py), [src/ai/llm/factory.py](src/ai/llm/factory.py)
-- Domain routers: 
+- Domain routers:
   - [src/api/routers/ingest.py](src/api/routers/ingest.py)
   - [src/api/routers/embed.py](src/api/routers/embed.py)
   - [src/api/routers/search.py](src/api/routers/search.py)

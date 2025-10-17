@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple, Any
+from typing import Any
 
 
-def _to_bar_spec(dist: Dict[str, int], title: str) -> Dict[str, Any]:
+def _to_bar_spec(dist: dict[str, int], title: str) -> dict[str, Any]:
     """
     Convert a label->count mapping into a minimal chart-agnostic bar spec.
     Deterministic ordering: sort by count desc, then label asc.
@@ -18,7 +18,7 @@ def _to_bar_spec(dist: Dict[str, int], title: str) -> Dict[str, Any]:
     return {"type": "bar", "title": title, "labels": labels, "values": values}
 
 
-def _to_ranked_list_spec(pairs: List[Tuple[str, int]], title: str) -> Dict[str, Any]:
+def _to_ranked_list_spec(pairs: list[tuple[str, int]], title: str) -> dict[str, Any]:
     """
     Convert a ranked list like department/product volumes [(label, count), ...]
     into a minimal chart spec (bar).
@@ -31,7 +31,7 @@ def _to_ranked_list_spec(pairs: List[Tuple[str, int]], title: str) -> Dict[str, 
     return {"type": "bar", "title": title, "labels": labels, "values": values}
 
 
-def _to_histogram_spec(dist: Dict[int, int], title: str) -> Dict[str, Any]:
+def _to_histogram_spec(dist: dict[int, int], title: str) -> dict[str, Any]:
     """
     Convert an integer value->count mapping into a histogram-like spec.
     Deterministic ordering by bucket (ascending).
@@ -45,7 +45,7 @@ def _to_histogram_spec(dist: Dict[int, int], title: str) -> Dict[str, Any]:
     return {"type": "histogram", "title": title, "buckets": buckets, "counts": counts}
 
 
-def transform_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
+def transform_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     """
     Transform raw analytics metrics into chart-agnostic specifications.
 

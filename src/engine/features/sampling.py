@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -23,13 +23,16 @@ class SamplingConfig:
     - buckets: list of column names to form Cartesian segments; missing columns are ignored
     - per_bucket_cap: maximum tickets to sample per Cartesian segment
     """
+
     max_tickets: int
     token_budget: int
-    buckets: List[str] = field(default_factory=lambda: ["Department", "ticket_quality", "resolution_complexity"])
+    buckets: list[str] = field(
+        default_factory=lambda: ["Department", "ticket_quality", "resolution_complexity"]
+    )
     per_bucket_cap: int = 3
 
 
-def _existing_bucket_cols(df: pd.DataFrame, names: List[str]) -> List[str]:
+def _existing_bucket_cols(df: pd.DataFrame, names: list[str]) -> list[str]:
     return [c for c in (names or []) if isinstance(df, pd.DataFrame) and c in df.columns]
 
 
@@ -50,7 +53,7 @@ def _approx_chars_for_tokens(tokens: int) -> int:
     return t * 4
 
 
-def _row_text(rec: Dict[str, Any]) -> str:
+def _row_text(rec: dict[str, Any]) -> str:
     """
     Build a concise, sanitized line for a ticket record using available fields.
     Preference order for text: summarize_ticket, normalized_text, Summary/summary.
@@ -66,7 +69,7 @@ def _row_text(rec: Dict[str, Any]) -> str:
         or ""
     )
     s = " ".join(str(text).split())  # collapse whitespace
-    parts: List[str] = []
+    parts: list[str] = []
     if dept:
         parts.append(f"[Dept: {dept}]")
     if prod:
@@ -89,7 +92,7 @@ def _resolve_id_column(df: pd.DataFrame) -> str | None:
     return None
 
 
-def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
+def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> dict[str, Any]:
     """
     Stratified sample over Cartesian buckets with deterministic selection and token-budgeted context.
 
@@ -116,7 +119,7 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
             if col in group_df.columns:
                 group_df[col] = group_df[col].fillna("(missing)").astype(str)
         grouped = group_df.groupby(bucket_cols, dropna=False, sort=True)
-        groups: List[Tuple[Tuple[str, ...], pd.DataFrame]] = []
+        groups: list[tuple[tuple[str, ...], pd.DataFrame]] = []
         for key_vals, gdf in grouped:
             # Ensure key is always a tuple for uniform handling
             if not isinstance(key_vals, tuple):
@@ -130,8 +133,8 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
     # Determine id column if available
     id_col = _resolve_id_column(df)
 
-    sampled_rows: List[pd.Series] = []
-    segments_out: List[Dict[str, Any]] = []
+    sampled_rows: list[pd.Series] = []
+    segments_out: list[dict[str, Any]] = []
 
     remaining_capacity = max(int(cfg.max_tickets or 0), 0)
     per_cap = max(int(cfg.per_bucket_cap or 0), 0)
@@ -158,10 +161,12 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
 
         remaining_capacity -= take_n
         seg_key_map = {bucket_cols[i]: key_vals[i] for i in range(len(key_vals))}
-        segments_out.append({"key": seg_key_map, "count": int(seg_total), "sample_count": int(take_n)})
+        segments_out.append(
+            {"key": seg_key_map, "count": int(seg_total), "sample_count": int(take_n)}
+        )
 
     # Build sampled ids in stable order
-    sampled_ids: List[int] = []
+    sampled_ids: list[int] = []
     for row in sampled_rows:
         if id_col and id_col in row and pd.notna(row[id_col]):
             try:
@@ -177,7 +182,7 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
             sampled_ids.append(len(sampled_ids))
 
     # Summary metrics for prompts (from full DataFrame to reflect dataset context)
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "total_rows": int(len(df)),
         "selected_rows": int(len(sampled_rows)),
         "quality": compute_quality_distribution(df),
@@ -189,7 +194,7 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
     # Build token-budgeted context text
     # Assemble segment blocks with small headers plus bullet samples
     char_budget = _approx_chars_for_tokens(int(cfg.token_budget or 0))
-    header_lines: List[str] = [
+    header_lines: list[str] = [
         "# Analysis Context",
         f"Total tickets: {summary['total_rows']}",
         f"Selected for sampling: {summary['selected_rows']}",
@@ -206,7 +211,7 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
         c_items = ", ".join([f"{k}({v})" for k, v in sorted(summary["complexity"].items())])
         header_lines.append(f"Complexity: {c_items}")
 
-    blocks: List[str] = ["\n".join(header_lines)]
+    blocks: list[str] = ["\n".join(header_lines)]
 
     # Map from segment to its sampled rows for block assembly
     # Build a DataFrame from sampled_rows to efficiently filter per segment (if buckets exist)
@@ -223,8 +228,10 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
             # Still include header for visibility; no samples
             key_map = seg.get("key", {})
             seg_title_parts = [f"{k}={v}" for k, v in key_map.items()]
-            block_lines = [f"## Segment: {' | '.join(seg_title_parts) if seg_title_parts else 'All'} "
-                           f"(count={seg.get('count', 0)}, sampled=0)"]
+            block_lines = [
+                f"## Segment: {' | '.join(seg_title_parts) if seg_title_parts else 'All'} "
+                f"(count={seg.get('count', 0)}, sampled=0)"
+            ]
             seg_block = "\n".join(block_lines)
             # Budget check at boundary: include whole block or stop
             if sum(len(b) for b in blocks) + len(seg_block) + 1 > char_budget:
@@ -234,10 +241,12 @@ def stratified_sample(df: pd.DataFrame, cfg: SamplingConfig) -> Dict[str, Any]:
 
         key_map = seg.get("key", {})
         seg_title_parts = [f"{k}={v}" for k, v in key_map.items()]
-        header = f"## Segment: {' | '.join(seg_title_parts) if seg_title_parts else 'All'} " \
-                 f"(count={seg.get('count', 0)}, sampled={seg.get('sample_count', 0)})"
+        header = (
+            f"## Segment: {' | '.join(seg_title_parts) if seg_title_parts else 'All'} "
+            f"(count={seg.get('count', 0)}, sampled={seg.get('sample_count', 0)})"
+        )
 
-        samples_lines: List[str] = []
+        samples_lines: list[str] = []
         # Select rows for this segment
         if bucket_cols and not sampled_df.empty:
             mask = pd.Series([True] * len(sampled_df))

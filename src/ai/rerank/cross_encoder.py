@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import os
-from typing import List, Tuple, Optional
 
 from ai.rerank.interface import RerankAdapter, RerankError
 
 
-def _truthy(val: Optional[str]) -> bool:
+def _truthy(val: str | None) -> bool:
     if val is None:
         return False
     return str(val).strip().lower() in ("1", "true", "yes", "on")
@@ -24,7 +23,9 @@ class CrossEncoderReranker(RerankAdapter):
 
     def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L6-v2") -> None:
         # Guard against offline mode
-        if _truthy(os.environ.get("TRANSFORMERS_OFFLINE")) or _truthy(os.environ.get("HF_HUB_OFFLINE")):
+        if _truthy(os.environ.get("TRANSFORMERS_OFFLINE")) or _truthy(
+            os.environ.get("HF_HUB_OFFLINE")
+        ):
             raise RerankError(
                 "CrossEncoder backend disabled in offline mode (TRANSFORMERS_OFFLINE/HF_HUB_OFFLINE set). "
                 "Use builtin reranker or unset offline flags if a local model is available."
@@ -40,23 +41,25 @@ class CrossEncoderReranker(RerankAdapter):
                 try:
                     from sentence_transformers.cross_encoder import CrossEncoder  # type: ignore
                 except Exception:
-                    raise e_st
+                    raise e_st from None
         except Exception as e:
-            raise RerankError(f"sentence-transformers not available for CrossEncoder backend: {e}") from e
+            raise RerankError(
+                f"sentence-transformers not available for CrossEncoder backend: {e}"
+            ) from e
 
         # Torch is usually required by sentence-transformers
         try:
-            import torch  # type: ignore
+            pass  # type: ignore
         except Exception as e:
             raise RerankError(f"PyTorch is required for CrossEncoder backend: {e}") from e
 
-        # Initialize model with Sigmoid activation to ensure [0, 1] normalized scores
+        # Initialize model on CPU; normalize scores in rerank() if needed
         try:
-            self._model = CrossEncoder(model_name, activation_fn=torch.nn.Sigmoid(), device="cpu")
+            self._model = CrossEncoder(model_name, device="cpu")
         except Exception as e:
             raise RerankError(f"Failed to initialize CrossEncoder model '{model_name}': {e}") from e
 
-    def rerank(self, query: str, candidates: List[Tuple[int, str]]) -> List[Tuple[int, float]]:
+    def rerank(self, query: str, candidates: list[tuple[int, str]]) -> list[tuple[int, float]]:
         if not candidates:
             return []
         pairs = [(query or "", c if isinstance(c, str) else "") for _tid, c in candidates]
@@ -66,8 +69,8 @@ class CrossEncoderReranker(RerankAdapter):
             raise RerankError(f"CrossEncoder scoring failed: {e}") from e
 
         # Ensure python floats and normalization bounds [0,1]
-        out: List[Tuple[int, float]] = []
-        for (tid, _), s in zip(candidates, list(scores)):
+        out: list[tuple[int, float]] = []
+        for (tid, _), s in zip(candidates, list(scores), strict=False):
             try:
                 sf = float(s)
             except Exception:

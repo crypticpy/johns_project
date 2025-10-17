@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
 
 import pandas as pd
 from sqlalchemy import Select, and_, select
@@ -18,7 +18,7 @@ class TicketsRepository:
     """
 
     @staticmethod
-    def _to_int_or_none(value: object) -> Optional[int]:
+    def _to_int_or_none(value: object) -> int | None:
         try:
             if value is None:
                 return None
@@ -42,7 +42,7 @@ class TicketsRepository:
         *,
         dataset_id: int,
         df: pd.DataFrame,
-        normalized_texts: Optional[List[Optional[str]]] = None,
+        normalized_texts: list[str | None] | None = None,
         batch_size: int = 1000,
     ) -> int:
         """
@@ -58,7 +58,7 @@ class TicketsRepository:
         normalized_texts: optional list (len == len(df)) to populate Ticket.normalized_text.
         Returns number of inserted rows.
         """
-        rows: List[Ticket] = []
+        rows: list[Ticket] = []
         n = len(df)
         if normalized_texts is not None and len(normalized_texts) != n:
             raise ValueError("normalized_texts length must match DataFrame length")
@@ -79,7 +79,11 @@ class TicketsRepository:
             ticket = Ticket(
                 dataset_id=dataset_id,
                 department=None if (department is None or pd.isna(department)) else str(department),
-                assignment_group=None if (assignment_group is None or pd.isna(assignment_group)) else str(assignment_group),
+                assignment_group=(
+                    None
+                    if (assignment_group is None or pd.isna(assignment_group))
+                    else str(assignment_group)
+                ),
                 product=None if (product is None or pd.isna(product)) else str(product),
                 summary=None if (summary is None or pd.isna(summary)) else str(summary),
                 quality=None if (quality is None or pd.isna(quality)) else str(quality),
@@ -109,13 +113,13 @@ class TicketsRepository:
     def query_filtered(
         db: Session,
         *,
-        dataset_id: Optional[int] = None,
-        departments: Optional[Iterable[str]] = None,
-        assignment_groups: Optional[Iterable[str]] = None,
-        products: Optional[Iterable[str]] = None,
+        dataset_id: int | None = None,
+        departments: Iterable[str] | None = None,
+        assignment_groups: Iterable[str] | None = None,
+        products: Iterable[str] | None = None,
         limit: int = 1000,
         offset: int = 0,
-    ) -> List[Ticket]:
+    ) -> list[Ticket]:
         """
         Fetch tickets using optional filters. All filters are combined with AND.
         """

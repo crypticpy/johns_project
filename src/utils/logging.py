@@ -1,10 +1,10 @@
 from __future__ import annotations
-# pylint: disable=no-member
 
+# pylint: disable=no-member
 import importlib
 import logging as std_logging
 from pathlib import Path
-from typing import Any, Callable, Optional, Union, cast
+from typing import Any
 
 try:
     import yaml  # type: ignore
@@ -19,7 +19,7 @@ def _apply_dict_config(config: dict) -> bool:
     """
     try:
         lc = importlib.import_module("logging.config")
-        dict_config: Optional[Any] = getattr(lc, "dictConfig", None)
+        dict_config: Any | None = getattr(lc, "dictConfig", None)
         if callable(dict_config):
             dict_config(config)  # type: ignore[misc]
             return True
@@ -28,7 +28,7 @@ def _apply_dict_config(config: dict) -> bool:
     return False
 
 
-def init_logging(config_path: Union[str, Path] = "src/config/logging.yaml") -> None:
+def init_logging(config_path: str | Path = "src/config/logging.yaml") -> None:
     """
     Initialize structured logging from a YAML configuration.
 

@@ -1,15 +1,14 @@
-import json
-from typing import List
-
 import pytest
 from sqlalchemy import select
 
-from ai.llm.tools.registry import ToolRegistry, ToolContext, ReportsGetOutput
-from db.models import AuditLog, Dataset, Ticket
+from ai.llm.tools.registry import ToolContext, ToolRegistry
+from db.models import AuditLog
 
 
 @pytest.mark.unit
-def test_cluster_run_emits_audit(registry: ToolRegistry, ctx_analyst: ToolContext, small_csv_path: str):
+def test_cluster_run_emits_audit(
+    registry: ToolRegistry, ctx_analyst: ToolContext, small_csv_path: str
+):
     """
     Execute tool.cluster.run with roles {'analyst'} on a small synthetic dataset.
     After execution, assert an audit entry persisted.
@@ -26,7 +25,12 @@ def test_cluster_run_emits_audit(registry: ToolRegistry, ctx_analyst: ToolContex
     # 2) embed/run
     res_emb = registry.execute(
         "embed.run",
-        {"dataset_id": dataset_id, "backend": "builtin", "model_name": "builtin-384", "batch_size": 32},
+        {
+            "dataset_id": dataset_id,
+            "backend": "builtin",
+            "model_name": "builtin-384",
+            "batch_size": 32,
+        },
         ctx_analyst,
     )
     assert "error" not in res_emb, f"embed failed: {res_emb}"
@@ -55,7 +59,9 @@ def test_cluster_run_emits_audit(registry: ToolRegistry, ctx_analyst: ToolContex
                     AuditLog.action == "cluster.run",
                     AuditLog.resource == f"dataset:{dataset_id}",
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         assert len(rows) >= 1, "expected at least one audit row for cluster.run"
         meta = rows[-1].metadata_ or {}
@@ -90,7 +96,9 @@ def test_prompts_save_emits_audit_and_metadata_sane(registry: ToolRegistry, ctx_
                     AuditLog.action == "prompts.save",
                     AuditLog.resource == f"prompt:{version}",
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         assert len(rows) >= 1, "expected at least one audit row for prompts.save"
         meta = rows[-1].metadata_ or {}

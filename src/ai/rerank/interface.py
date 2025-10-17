@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import List, Protocol, Tuple, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 class RerankError(Exception):
     """Raised when rerank backend is unavailable or fails deterministically."""
+
     pass
 
 
@@ -12,7 +13,7 @@ class RerankError(Exception):
 class RerankAdapter(Protocol):
     """Adapter protocol for rerank backends."""
 
-    def rerank(self, query: str, candidates: List[Tuple[int, str]]) -> List[Tuple[int, float]]:
+    def rerank(self, query: str, candidates: list[tuple[int, str]]) -> list[tuple[int, float]]:
         """
         Score and order candidates given a query.
 
@@ -25,6 +26,6 @@ class RerankAdapter(Protocol):
             Scores must be normalized to [0.0, 1.0] for comparability.
         """
         ...
-        
+
 
 __all__ = ["RerankError", "RerankAdapter"]

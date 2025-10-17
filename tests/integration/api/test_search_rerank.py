@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -50,7 +50,9 @@ def _make_csv_bytes() -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
-def test_search_rerank_builtin_changes_order_when_lexical_overlap_differs_and_respects_filters() -> None:
+def test_search_rerank_builtin_changes_order_when_lexical_overlap_differs_and_respects_filters() -> (
+    None
+):
     # Ensure a clean database for this test run (idempotent)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -95,8 +97,8 @@ def test_search_rerank_builtin_changes_order_when_lexical_overlap_differs_and_re
         },
     )
     assert resp_rerank_a.status_code == 200, resp_rerank_a.text
-    payload_a: Dict[str, Any] = resp_rerank_a.json()
-    results_a: List[Dict[str, Any]] = payload_a.get("results", [])
+    payload_a: dict[str, Any] = resp_rerank_a.json()
+    results_a: list[dict[str, Any]] = payload_a.get("results", [])
     assert len(results_a) > 0
     # Validate normalized scores
     for item in results_a:
@@ -116,8 +118,8 @@ def test_search_rerank_builtin_changes_order_when_lexical_overlap_differs_and_re
         },
     )
     assert resp_rerank_b.status_code == 200, resp_rerank_b.text
-    payload_b: Dict[str, Any] = resp_rerank_b.json()
-    results_b: List[Dict[str, Any]] = payload_b.get("results", [])
+    payload_b: dict[str, Any] = resp_rerank_b.json()
+    results_b: list[dict[str, Any]] = payload_b.get("results", [])
     assert len(results_b) > 0
     for item in results_b:
         s = float(item["score"])
@@ -142,6 +144,6 @@ def test_search_rerank_builtin_changes_order_when_lexical_overlap_differs_and_re
     )
     assert resp_rerank_hr.status_code == 200, resp_rerank_hr.text
     payload_hr = resp_rerank_hr.json()
-    results_hr: List[Dict[str, Any]] = payload_hr.get("results", [])
+    results_hr: list[dict[str, Any]] = payload_hr.get("results", [])
     for item in results_hr:
         assert item["department"] == "HR"

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
 
 from ai.rerank.interface import RerankAdapter
-
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 
-def _tokenize(text: str) -> List[str]:
+def _tokenize(text: str) -> list[str]:
     """
     Deterministic, simple regex tokenization:
     - Alphanumeric word tokens
@@ -21,9 +19,9 @@ def _tokenize(text: str) -> List[str]:
     return [t.lower() for t in _WORD_RE.findall(text)]
 
 
-def _tf(tokens: List[str]) -> Dict[str, int]:
+def _tf(tokens: list[str]) -> dict[str, int]:
     """Compute term frequencies deterministically."""
-    freq: Dict[str, int] = {}
+    freq: dict[str, int] = {}
     for tok in tokens:
         freq[tok] = freq.get(tok, 0) + 1
     return freq
@@ -40,7 +38,7 @@ def _jaccard(set_a: set[str], set_b: set[str]) -> float:
     return inter / union
 
 
-def _weighted_jaccard(tf_a: Dict[str, int], tf_b: Dict[str, int]) -> float:
+def _weighted_jaccard(tf_a: dict[str, int], tf_b: dict[str, int]) -> float:
     """
     Weighted Jaccard over term frequencies:
     sum(min(tf_a[t], tf_b[t])) / sum(max(tf_a[t], tf_b[t]))
@@ -77,12 +75,12 @@ class BuiltinLexicalReranker(RerankAdapter):
       - Stable tiebreak by ascending ticket_id to maintain deterministic order across runs
     """
 
-    def rerank(self, query: str, candidates: List[Tuple[int, str]]) -> List[Tuple[int, float]]:
+    def rerank(self, query: str, candidates: list[tuple[int, str]]) -> list[tuple[int, float]]:
         q_tokens = _tokenize(query or "")
         q_tf = _tf(q_tokens)
         q_set = set(q_tokens)
 
-        out: List[Tuple[int, float]] = []
+        out: list[tuple[int, float]] = []
         for ticket_id, summary in candidates:
             s_tokens = _tokenize(summary or "")
             s_tf = _tf(s_tokens)

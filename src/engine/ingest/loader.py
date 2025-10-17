@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 from io import BytesIO
-from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -45,7 +44,7 @@ def _read_tabular(file_bytes: bytes, filename: str) -> pd.DataFrame:
         raise ValueError(f"Unsupported file type for '{filename}'. Provide CSV or Excel.") from e
 
 
-def validate_and_load(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict]:
+def validate_and_load(file_bytes: bytes, filename: str) -> tuple[pd.DataFrame, dict]:
     """
     Validate and load an uploaded file into a normalized DataFrame and metadata.
 

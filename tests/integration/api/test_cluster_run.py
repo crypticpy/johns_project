@@ -3,15 +3,14 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
-from typing import Dict, List
 
 import pandas as pd
 from fastapi.testclient import TestClient
 
 from api.main import create_app
 from db.models import Base, ClusterAssignment, ClusterTerm
-from db.session import engine, SessionLocal
 from db.repositories.clusters_repo import ClustersRepository
+from db.session import SessionLocal, engine
 
 
 def _make_csv_bytes() -> bytes:
@@ -114,20 +113,22 @@ def test_cluster_run_kmeans_persists_assignments_metrics_and_terms_offline():
     assert (silhouette is None) or isinstance(silhouette, (int, float))
 
     # Cluster counts sum equals row_count
-    counts: Dict[int, int] = payload_cluster.get("cluster_counts", {})
+    counts: dict[int, int] = payload_cluster.get("cluster_counts", {})
     assert isinstance(counts, dict)
     assert sum(int(v) for v in counts.values()) == row_count
 
     # Ensure TF-IDF top terms exist for clusters >= 0
     db = SessionLocal()
     try:
-        terms: List[ClusterTerm] = list(
+        terms: list[ClusterTerm] = list(
             db.query(ClusterTerm).filter(ClusterTerm.run_id == run_id_1).all()  # type: ignore[attr-defined]
         )
         # There should be at least one term recorded
         assert len(terms) >= 1
         # All terms have cluster_id >= 0 and non-empty term strings
-        assert all((t.cluster_id >= 0 and isinstance(t.term, str) and t.term.strip() != "") for t in terms)
+        assert all(
+            (t.cluster_id >= 0 and isinstance(t.term, str) and t.term.strip() != "") for t in terms
+        )
     finally:
         db.close()
 
@@ -141,7 +142,9 @@ def test_cluster_run_kmeans_persists_assignments_metrics_and_terms_offline():
     # Repository latest run should match second run_id
     db = SessionLocal()
     try:
-        latest = ClustersRepository.get_latest_run(db, dataset_id=dataset_id, model_name="builtin-384", algorithm="kmeans")
+        latest = ClustersRepository.get_latest_run(
+            db, dataset_id=dataset_id, model_name="builtin-384", algorithm="kmeans"
+        )
         assert int(latest or 0) == run_id_2
 
         # Each run should have assignments count == row_count

@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-from ai.embeddings.interface import EmbeddingsAdapter
 from ai.embeddings.builtin_embedder import BuiltinEmbedder
+from ai.embeddings.interface import EmbeddingsAdapter
 from ai.embeddings.sentence_transformers_embedder import SentenceTransformersEmbedder
 from config.settings import get_settings
 
@@ -17,7 +17,9 @@ def _resolve_backend() -> str:
     return backend or "sentence-transformers"
 
 
-def select_embedder(backend: Literal["sentence-transformers", "builtin"] | None = None) -> EmbeddingsAdapter:
+def select_embedder(
+    backend: Literal["sentence-transformers", "builtin"] | None = None,
+) -> EmbeddingsAdapter:
     """
     Factory for embeddings adapters.
 

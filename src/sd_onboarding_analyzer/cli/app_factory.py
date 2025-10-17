@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from fastapi import FastAPI
 
 # Import the application factory from the API package

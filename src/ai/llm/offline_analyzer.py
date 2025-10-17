@@ -1,23 +1,18 @@
 from __future__ import annotations
 
-from typing import List
-
 from ai.llm.interface import AnalyzerAdapter, AnalyzerError
 
 
-def _extract_lines(context: str) -> List[str]:
+def _extract_lines(context: str) -> list[str]:
     """
     Split context into normalized lines for deterministic parsing.
     """
     if not isinstance(context, str):
         return []
-    return [
-        ln.rstrip()
-        for ln in context.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    ]
+    return [ln.rstrip() for ln in context.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
 
 
-def _find_line_prefix(lines: List[str], prefix: str) -> str | None:
+def _find_line_prefix(lines: list[str], prefix: str) -> str | None:
     """
     Return the first line that starts with prefix; otherwise None.
     """
@@ -25,12 +20,12 @@ def _find_line_prefix(lines: List[str], prefix: str) -> str | None:
     return next((ln[len(p) :].strip() for ln in lines if ln.startswith(p)), None)
 
 
-def _parse_key_counts(raw: str) -> List[tuple[str, int]]:
+def _parse_key_counts(raw: str) -> list[tuple[str, int]]:
     """
     Parse comma-separated items like 'IT(10), HR(8)' into [('IT', 10), ('HR', 8)].
     Robust to spacing; ignores malformed entries deterministically.
     """
-    out: List[tuple[str, int]] = []
+    out: list[tuple[str, int]] = []
     if not raw:
         return out
     items = [x.strip() for x in raw.split(",") if x.strip()]
@@ -51,7 +46,7 @@ def _parse_key_counts(raw: str) -> List[tuple[str, int]]:
     return out
 
 
-def _parse_distribution(raw: str) -> List[tuple[str, int]]:
+def _parse_distribution(raw: str) -> list[tuple[str, int]]:
     """
     Parse 'low(3), medium(5), high(2)' into [('medium',5), ('low',3), ('high',2)] (sorted by count desc).
     """
@@ -67,7 +62,9 @@ class OfflineAnalyzer(AnalyzerAdapter):
     - Produces stable sections suitable for offline CI validation.
     """
 
-    def analyze(self, context: str, question: str, prompt_version: str, comparison_mode: bool = False) -> str:
+    def analyze(
+        self, context: str, question: str, prompt_version: str, comparison_mode: bool = False
+    ) -> str:
         if not isinstance(context, str) or not context.strip():
             raise AnalyzerError("Context is required for offline analysis")
         if not isinstance(question, str) or not question.strip():
@@ -99,7 +96,7 @@ class OfflineAnalyzer(AnalyzerAdapter):
         complexity_dist = _parse_distribution(complexity_raw or "")
 
         # Build structured markdown deterministically
-        md_sections: List[str] = []
+        md_sections: list[str] = []
 
         # Title and meta
         md_sections.append("# Service Desk Analysis")
@@ -148,8 +145,14 @@ class OfflineAnalyzer(AnalyzerAdapter):
             md_sections.append("- No department volume data available.")
         if quality_dist:
             # Prefer worst quality to surface onboarding opportunity
-            worst = sorted(quality_dist, key=lambda kv: (kv[1], kv[0]))[-1][0] if quality_dist else "n/a"
-            md_sections.append(f"- Quality distribution includes: {', '.join([q for q, _ in quality_dist])}; focus on '{worst}'.")
+            worst = (
+                sorted(quality_dist, key=lambda kv: (kv[1], kv[0]))[-1][0]
+                if quality_dist
+                else "n/a"
+            )
+            md_sections.append(
+                f"- Quality distribution includes: {', '.join([q for q, _ in quality_dist])}; focus on '{worst}'."
+            )
         else:
             md_sections.append("- Quality distribution not available.")
         if complexity_dist:
@@ -162,7 +165,9 @@ class OfflineAnalyzer(AnalyzerAdapter):
         # Recommendations: stable rule-based
         md_sections.append("## Recommendations")
         md_sections.append("- Establish targeted onboarding modules for top-volume departments.")
-        md_sections.append("- Improve documentation for common low-quality tickets to uplift standards.")
+        md_sections.append(
+            "- Improve documentation for common low-quality tickets to uplift standards."
+        )
         md_sections.append("- Create troubleshooting guides for high-complexity resolutions.")
         md_sections.append("- Track reassignment trends and address root causes.")
         md_sections.append("")
@@ -170,9 +175,13 @@ class OfflineAnalyzer(AnalyzerAdapter):
         # Onboarding KV draft (static fields, deterministic)
         md_sections.append("## Onboarding Key-Values")
         md_sections.append("- Audience: New Service Desk Analysts")
-        md_sections.append("- Focus Areas: High-volume departments, common low-quality patterns, high-complexity resolution steps")
+        md_sections.append(
+            "- Focus Areas: High-volume departments, common low-quality patterns, high-complexity resolution steps"
+        )
         md_sections.append("- Artifacts: Playbooks, checklists, SOPs, FAQ entries")
-        md_sections.append("- Metrics: Adoption rate, ticket quality uplift, resolution time reduction")
+        md_sections.append(
+            "- Metrics: Adoption rate, ticket quality uplift, resolution time reduction"
+        )
         md_sections.append("")
 
         # Context echo (truncated safely to keep output bounded by input size)

@@ -6,10 +6,10 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from db.models import Base
 from db.repositories.datasets_repo import DatasetsRepository
 from db.repositories.tickets_repo import TicketsRepository
 from db.session import SessionLocal, engine
-from db.models import Base
 
 
 def _make_csv_bytes() -> bytes:
@@ -89,7 +89,11 @@ def test_ingest_upload_persists_dataset_and_tickets_and_returns_summary():
         departments = sorted({t.department for t in tickets if t.department})
         assert departments == ["Finance", "HR", "IT"]
         assignment_groups = sorted({t.assignment_group for t in tickets if t.assignment_group})
-        assert "Service Desk" in assignment_groups and "Onboarding" in assignment_groups and "Accounts" in assignment_groups
+        assert (
+            "Service Desk" in assignment_groups
+            and "Onboarding" in assignment_groups
+            and "Accounts" in assignment_groups
+        )
         products = sorted({t.product for t in tickets if t.product})
         assert "Laptop" in products and "HRIS" in products and "ERP" in products
     finally:

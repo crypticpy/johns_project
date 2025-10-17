@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -93,12 +93,15 @@ def test_search_nn_returns_neighbors_and_fields_and_filters_and_is_idempotent():
         },
     )
     assert resp_search.status_code == 200, resp_search.text
-    payload_search: Dict[str, Any] = resp_search.json()
+    payload_search: dict[str, Any] = resp_search.json()
 
     assert payload_search["dataset_id"] == dataset_id
     assert int(payload_search["k"]) == k
-    assert payload_search["model_name"] in ("builtin-384", "text-embedding-3-large")  # model_name inferred from meta; builtin expected
-    results: List[Dict[str, Any]] = payload_search.get("results", [])
+    assert payload_search["model_name"] in (
+        "builtin-384",
+        "text-embedding-3-large",
+    )  # model_name inferred from meta; builtin expected
+    results: list[dict[str, Any]] = payload_search.get("results", [])
     assert len(results) <= k
     # Validate fields in results
     for item in results:
@@ -120,7 +123,7 @@ def test_search_nn_returns_neighbors_and_fields_and_filters_and_is_idempotent():
     )
     assert resp_search_dept.status_code == 200, resp_search_dept.text
     payload_search_dept = resp_search_dept.json()
-    results_dept: List[Dict[str, Any]] = payload_search_dept.get("results", [])
+    results_dept: list[dict[str, Any]] = payload_search_dept.get("results", [])
     for item in results_dept:
         assert item["department"] == "IT"
 
@@ -138,10 +141,10 @@ def test_search_nn_returns_neighbors_and_fields_and_filters_and_is_idempotent():
     )
     assert resp_search_again.status_code == 200, resp_search_again.text
     payload_search_again = resp_search_again.json()
-    results_again: List[Dict[str, Any]] = payload_search_again.get("results", [])
+    results_again: list[dict[str, Any]] = payload_search_again.get("results", [])
 
     # Compare by (ticket_id, rounded score) sequences for stability
-    def sig(seq: List[Dict[str, Any]]) -> List[Tuple[int, float]]:
+    def sig(seq: list[dict[str, Any]]) -> list[tuple[int, float]]:
         return [(int(x["ticket_id"]), round(float(x["score"]), 6)) for x in seq]
 
     assert sig(results_again) == sig(results)

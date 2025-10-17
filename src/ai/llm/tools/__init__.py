@@ -10,6 +10,6 @@ Exports:
 - build_tool_context_from_claims: helper to derive ToolContext fields from JWT claims
 """
 
-from .registry import ToolSpec, ToolContext, ToolRegistry, build_tool_context_from_claims
+from .registry import ToolContext, ToolRegistry, ToolSpec, build_tool_context_from_claims
 
 __all__ = ["ToolSpec", "ToolContext", "ToolRegistry", "build_tool_context_from_claims"]

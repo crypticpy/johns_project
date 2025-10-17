@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,21 +8,21 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from db.models import Dataset, Ticket
-from db.session import get_session
 from db.repositories.tickets_repo import TicketsRepository
+from db.session import get_session
 from engine.analytics.metrics import (
-    compute_quality_distribution,
     compute_complexity_distribution,
     compute_department_volume,
-    compute_reassignment_distribution,
     compute_product_distribution,
+    compute_quality_distribution,
+    compute_reassignment_distribution,
 )
 from engine.analytics.visualizations import transform_metrics
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
-def _tickets_to_df(tickets: List[Ticket]) -> pd.DataFrame:
+def _tickets_to_df(tickets: list[Ticket]) -> pd.DataFrame:
     """
     Build a DataFrame with canonical columns from Ticket ORM rows.
     Canonical columns:
@@ -46,7 +46,7 @@ def _tickets_to_df(tickets: List[Ticket]) -> pd.DataFrame:
             ]
         )
 
-    records: List[Dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
     for t in tickets:
         records.append(
             {
@@ -98,14 +98,14 @@ async def get_metrics(request: Request, db: Session = Depends(get_session)) -> J
         raise HTTPException(status_code=400, detail="dataset_id is required")
     try:
         dataset_id = int(dataset_id_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="dataset_id must be an integer")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="dataset_id must be an integer") from e
 
     top_n_val = qp.get("top_n", "10")
     try:
         top_n = int(top_n_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="top_n must be an integer")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="top_n must be an integer") from e
 
     # Repeated param support
     departments = list(qp.getlist("department_filter")) or None
@@ -116,7 +116,7 @@ async def get_metrics(request: Request, db: Session = Depends(get_session)) -> J
         raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
 
     # Fetch tickets with optional department filter
-    tickets: List[Ticket] = TicketsRepository.query_filtered(
+    tickets: list[Ticket] = TicketsRepository.query_filtered(
         db,
         dataset_id=dataset_id,
         departments=departments,
@@ -127,7 +127,7 @@ async def get_metrics(request: Request, db: Session = Depends(get_session)) -> J
     # Build DataFrame and compute metrics (pure functions; fallback-safe)
     df = _tickets_to_df(tickets)
 
-    raw_metrics: Dict[str, Any] = {
+    raw_metrics: dict[str, Any] = {
         "quality": compute_quality_distribution(df),
         "complexity": compute_complexity_distribution(df),
         "department_volume": compute_department_volume(df, top_n=top_n),

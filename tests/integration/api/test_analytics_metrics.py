@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Dict, Any
+from typing import Any
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -87,7 +87,7 @@ def test_analytics_metrics_returns_distributions_and_counts_align_with_uploaded_
     # Call analytics metrics
     resp_metrics = client.get("/analytics/metrics", params={"dataset_id": dataset_id, "top_n": 10})
     assert resp_metrics.status_code == 200, resp_metrics.text
-    metrics_payload: Dict[str, Any] = resp_metrics.json()
+    metrics_payload: dict[str, Any] = resp_metrics.json()
     assert metrics_payload["dataset_id"] == dataset_id
     assert "metrics" in metrics_payload and isinstance(metrics_payload["metrics"], dict)
 
@@ -138,7 +138,7 @@ def test_analytics_metrics_missing_columns_fallback_returns_empty_structures():
     # Call analytics metrics
     resp_metrics = client.get("/analytics/metrics", params={"dataset_id": dataset_id, "top_n": 10})
     assert resp_metrics.status_code == 200, resp_metrics.text
-    metrics_payload: Dict[str, Any] = resp_metrics.json()
+    metrics_payload: dict[str, Any] = resp_metrics.json()
     assert metrics_payload["dataset_id"] == dataset_id
     m = metrics_payload["metrics"]
 

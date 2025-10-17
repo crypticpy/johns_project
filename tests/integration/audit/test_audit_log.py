@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Dict
 
 import jwt
 from fastapi.testclient import TestClient
@@ -33,7 +32,7 @@ def _create_dataset() -> int:
 
 
 def _make_token(secret: str, subject: str) -> str:
-    payload: Dict[str, object] = {"sub": subject, "roles": ["analyst"]}
+    payload: dict[str, object] = {"sub": subject, "roles": ["analyst"]}
     return jwt.encode(payload, secret, algorithm="HS256")  # type: ignore[arg-type]
 
 
@@ -67,11 +66,7 @@ def test_analysis_run_emits_audit_log_entry():
 
     # Query audit log for the emitted entry
     with SessionLocal() as db:
-        rows = list(
-            db.execute(
-                select(AuditLog).order_by(AuditLog.id.desc()).limit(25)
-            ).scalars()
-        )
+        rows = list(db.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(25)).scalars())
         # Find matching record
         target = None
         for r in rows:

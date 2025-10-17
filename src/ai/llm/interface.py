@@ -32,5 +32,6 @@ class AnalyzerAdapter(Protocol):
         Structured markdown string as the analysis result
     """
 
-    def analyze(self, context: str, question: str, prompt_version: str, comparison_mode: bool = False) -> str:
-        ...
+    def analyze(
+        self, context: str, question: str, prompt_version: str, comparison_mode: bool = False
+    ) -> str: ...

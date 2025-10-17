@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, cast
+from typing import cast
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine

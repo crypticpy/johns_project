@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -11,7 +9,6 @@ from db.models import Dataset
 from db.repositories.embeddings_repo import EmbeddingsRepository
 from db.session import get_session
 from vector_store.faiss_index import FaissIndexAdapter, FaissIndexError
-
 
 router = APIRouter(prefix="/embed", tags=["embeddings"])
 
@@ -40,8 +37,8 @@ async def run_embeddings(request: Request, db: Session = Depends(get_session)) -
     # Parse JSON body defensively
     try:
         body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from e
 
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Request body must be a JSON object")
@@ -51,8 +48,8 @@ async def run_embeddings(request: Request, db: Session = Depends(get_session)) -
         raise HTTPException(status_code=400, detail="dataset_id is required")
     try:
         dataset_id_int = int(dataset_id_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="dataset_id must be an integer")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="dataset_id must be an integer") from e
 
     model_name_in = body.get("model_name", None)
     batch_size_in = body.get("batch_size", None)
@@ -69,8 +66,10 @@ async def run_embeddings(request: Request, db: Session = Depends(get_session)) -
     model_name = (model_name_in or default_model).strip()
     try:
         batch_size = int(batch_size_in or default_batch)
-    except Exception:
-        raise HTTPException(status_code=400, detail="batch_size must be an integer when provided")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail="batch_size must be an integer when provided"
+        ) from e
 
     # Fetch candidate texts (ids and input strings)
     ticket_ids, texts = EmbeddingsRepository.fetch_candidate_texts(db, dataset_id=dataset.id)
@@ -91,33 +90,39 @@ async def run_embeddings(request: Request, db: Session = Depends(get_session)) -
     try:
         vectors = embedder.embed_texts(texts, model=model_name, batch_size=batch_size)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Embedding backend error: {e}")
+        raise HTTPException(status_code=502, detail=f"Embedding backend error: {e}") from e
 
     if not vectors or len(vectors) != len(ticket_ids):
-        raise HTTPException(status_code=500, detail="Embedding adapter returned invalid vector count")
+        raise HTTPException(
+            status_code=500, detail="Embedding adapter returned invalid vector count"
+        )
 
     # Persist embeddings idempotently
     try:
-        counts = EmbeddingsRepository.upsert_for_dataset(
+        _ = EmbeddingsRepository.upsert_for_dataset(
             db,
             dataset_id=dataset.id,
             model_name=model_name,
-            records=list(zip(ticket_ids, vectors)),
+            records=list(zip(ticket_ids, vectors, strict=False)),
             batch_size=1000,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to persist embeddings: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to persist embeddings: {e}") from e
 
     # Rebuild FAISS index from persisted embeddings to avoid duplicates
-    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(db, dataset_id=dataset.id, model_name=model_name)
+    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(
+        db, dataset_id=dataset.id, model_name=model_name
+    )
     vector_dim: int = 0 if not vecs_all else len(vecs_all[0])
 
     index = FaissIndexAdapter()
     try:
         if ids_all and vecs_all:
-            index.build_index(dataset_id=dataset.id, vectors=vecs_all, ids=ids_all, model_name=model_name)
+            index.build_index(
+                dataset_id=dataset.id, vectors=vecs_all, ids=ids_all, model_name=model_name
+            )
     except FaissIndexError as e:
-        raise HTTPException(status_code=500, detail=f"FAISS index error: {e}")
+        raise HTTPException(status_code=500, detail=f"FAISS index error: {e}") from e
 
     payload = {
         "dataset_id": dataset.id,

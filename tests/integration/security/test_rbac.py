@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Dict
 
 import jwt
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from api.main import create_app
 from config.settings import get_settings
@@ -33,8 +31,10 @@ def _create_dataset() -> int:
         return int(ds.id)
 
 
-def _make_token(secret: str, roles: Dict[str, str | list[str] | None], subject: str | None = None) -> str:
-    payload: Dict[str, object] = {}
+def _make_token(
+    secret: str, roles: dict[str, str | list[str] | None], subject: str | None = None
+) -> str:
+    payload: dict[str, object] = {}
     if subject:
         payload["sub"] = subject
     # Flexible roles payload

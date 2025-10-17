@@ -90,11 +90,16 @@ extend-select = [
 ]
 ignore = [
   "E501",  # handled by black line-length
+  "B008",  # FastAPI Depends in defaults; ignore globally
+  "UP038", # stylistic isinstance union form; ignore globally
 ]
 src = ["src", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]  # ignore assert warnings in tests
+"tests/**" = ["S101", "E402"]  # ignore assert warnings and import order in tests
+"servicenow_analyzer.py" = ["E402"]  # allow mid-file import in monolith
+"src/ai/llm/tools/__init__.py" = ["E402"]  # allow re-export import at module top after docstring/comments
+"src/ai/embeddings/sentence_transformers_embedder.py" = ["E402"]  # allow import grouping compatible with __future__ and docstring
 
 [tool.mypy]
 python_version = "3.10"

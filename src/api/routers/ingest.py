@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -26,8 +26,8 @@ async def upload_dataset(request: Request, db: Session = Depends(get_session)) -
     # Parse multipart form defensively to avoid Pydantic TypeAdapter issues with UploadFile
     try:
         form = await request.form()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to parse multipart form")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Failed to parse multipart form") from e
 
     # Try canonical field name first
     file_obj = form.get("file")
@@ -50,17 +50,19 @@ async def upload_dataset(request: Request, db: Session = Depends(get_session)) -
     # Read all bytes
     try:
         file_bytes = await file_obj.read()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to read uploaded file")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Failed to read uploaded file") from e
 
     # Load and normalize
     try:
         df, meta = validate_and_load(file_bytes, filename)
     except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     if not isinstance(df, pd.DataFrame):
-        raise HTTPException(status_code=400, detail="Uploaded content did not parse into a DataFrame")
+        raise HTTPException(
+            status_code=400, detail="Uploaded content did not parse into a DataFrame"
+        )
 
     file_hash: str = str(meta["file_hash"])
     row_count: int = int(meta["rows"])
@@ -86,7 +88,7 @@ async def upload_dataset(request: Request, db: Session = Depends(get_session)) -
     # Recompute and persist distinct department count
     dept_count = DatasetsRepository.recompute_department_count(db, dataset.id)
 
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "dataset_id": dataset.id,
         "name": dataset.name,
         "row_count": dataset.row_count,

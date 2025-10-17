@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import jwt  # PyJWT
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
 from config.settings import get_settings
 
 
@@ -42,11 +43,11 @@ def _raise_for_non_200(resp) -> None:
             payload = resp.json()
             detail = payload.get("detail") or payload
             raise RuntimeError(f"HTTP {resp.status_code}: {detail}")
-        except Exception:
-            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text}")
+        except Exception as e:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text}") from e
 
 
-def run_ingest(app: FastAPI, file_path: str, dataset_name: Optional[str] = None) -> Dict[str, Any]:
+def run_ingest(app: FastAPI, file_path: str, dataset_name: str | None = None) -> dict[str, Any]:
     """
     Ingest a CSV/XLSX file via POST /ingest/upload.
 
@@ -91,7 +92,7 @@ def run_embed(
     dataset_id: int,
     backend: str = EmbedConfig.backend,
     model_name: str = EmbedConfig.model_name,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Run embeddings and FAISS indexing via POST /embed/run.
 
@@ -132,7 +133,7 @@ def run_analysis(
     prompt_version: str = "v1",
     max_tickets: int = 50,
     token_budget: int = 8000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute analysis via POST /analysis/run using offline analyzer by default.
 
@@ -168,7 +169,7 @@ def run_analysis(
 
     # Always attach a minimal JWT with analyst role to satisfy RBAC if enabled.
     # Safe when RBAC disabled (header is ignored).
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
     try:
         settings = get_settings()
     except Exception:
@@ -196,7 +197,7 @@ def run_analysis(
     return payload
 
 
-def run_report(app: FastAPI, dataset_id: int) -> Dict[str, Any]:
+def run_report(app: FastAPI, dataset_id: int) -> dict[str, Any]:
     """
     Retrieve report markdown via GET /reports/{dataset_id}.
 
@@ -233,7 +234,7 @@ def run_pipeline(
     embed_model: str = EmbedConfig.model_name,
     max_tickets: int = 50,
     token_budget: int = 8000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Orchestrate end-to-end pipeline: ingest → embed → analysis → report.
 
@@ -285,7 +286,7 @@ def run_pipeline(
     }
 
 
-def to_json(data: Dict[str, Any]) -> str:
+def to_json(data: dict[str, Any]) -> str:
     """
     Serialize dict payloads to compact JSON for CLI printing.
     """

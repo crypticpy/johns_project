@@ -10,11 +10,13 @@ if str(SRC_PATH) not in sys.path:
 
 import pytest
 
-from ai.llm.tools.registry import ToolRegistry, ToolContext, build_tool_context_from_claims
+from ai.llm.tools.registry import ToolContext, ToolRegistry, build_tool_context_from_claims
 
 
 @pytest.mark.integration
-def test_invalid_tool_name_returns_validation_or_unavailable(registry: ToolRegistry, ctx_viewer: ToolContext):
+def test_invalid_tool_name_returns_validation_or_unavailable(
+    registry: ToolRegistry, ctx_viewer: ToolContext
+):
     """
     Invalid tool name should surface a controlled error.
     Registry implementation returns category='validation_error' for unknown tools.
@@ -50,7 +52,12 @@ def test_rerank_cross_encoder_unavailable_or_fallback(
     # Embed with builtin to ensure index exists
     res_emb = registry.execute(
         "embed.run",
-        {"dataset_id": dataset_id, "backend": "builtin", "model_name": "builtin-384", "batch_size": 32},
+        {
+            "dataset_id": dataset_id,
+            "backend": "builtin",
+            "model_name": "builtin-384",
+            "batch_size": 32,
+        },
         ctx_analyst,
     )
     assert "error" not in res_emb, f"embed failed: {res_emb}"

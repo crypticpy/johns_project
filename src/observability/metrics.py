@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Soft dependency: prometheus_client is required at runtime for metrics, but we avoid hard import failures.
 try:
     from prometheus_client import Counter, Histogram  # type: ignore
+
     _PROM_AVAILABLE = True
 except Exception:  # pragma: no cover
     Counter = None  # type: ignore[assignment]
@@ -54,11 +55,13 @@ VECTOR_SEARCH_LATENCY = (
     else None
 )
 ANALYSIS_TOKEN_USAGE = (
-    Counter("analysis_token_usage", "Estimated tokens used for analysis") if _PROM_AVAILABLE else None
+    Counter("analysis_token_usage", "Estimated tokens used for analysis")
+    if _PROM_AVAILABLE
+    else None
 )
 
 
-def _extract_endpoint(scope: Dict[str, Any]) -> str:
+def _extract_endpoint(scope: dict[str, Any]) -> str:
     # Prefer route path template if available; fallback to raw path
     try:
         route = scope.get("route")
@@ -105,9 +108,9 @@ class MetricsMiddleware:
         endpoint = _extract_endpoint(scope)
         start = time.monotonic()
 
-        status_code_holder: Dict[str, Optional[int]] = {"status": None}
+        status_code_holder: dict[str, int | None] = {"status": None}
 
-        async def send_wrapper(message: Dict[str, Any]):
+        async def send_wrapper(message: dict[str, Any]):
             if message.get("type") == "http.response.start":
                 status = message.get("status")
                 try:

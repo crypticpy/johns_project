@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, LargeBinary, Float
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     """Base declarative class for all ORM models."""
+
     pass
 
 
@@ -20,24 +31,25 @@ class Dataset(Base):
     - Database column is named "metadata" to satisfy spec, but Python attribute uses "metadata_"
       to avoid clashing with SQLAlchemy's Base.metadata attribute.
     """
+
     __tablename__ = "datasets"
-    __table_args__ = (
-        UniqueConstraint("file_hash", name="uq_datasets_file_hash"),
-    )
+    __table_args__ = (UniqueConstraint("file_hash", name="uq_datasets_file_hash"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    file_hash: Mapped[str] = mapped_column(String(64), nullable=False)  # md5 hex (32) padded future-proof
+    file_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # md5 hex (32) padded future-proof
     row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     department_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     upload_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     # Column named "metadata" in DB; attribute name "metadata_"
-    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
 
     # Relationships
-    tickets: Mapped[List["Ticket"]] = relationship(
+    tickets: Mapped[list[Ticket]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan", lazy="selectin"
     )
 
@@ -60,6 +72,7 @@ class Ticket(Base):
     Plus:
       - normalized_text (cleaned/redacted text for downstream features)
     """
+
     __tablename__ = "tickets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -68,14 +81,16 @@ class Ticket(Base):
     )
 
     # Canonical features (nullable to allow partial datasets)
-    department: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    assignment_group: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    product: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # extract_product
-    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # summarize_ticket
-    quality: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # ticket_quality
-    complexity: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # resolution_complexity
-    reassignment_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    normalized_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    assignment_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    product: Mapped[str | None] = mapped_column(String(255), nullable=True)  # extract_product
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # summarize_ticket
+    quality: Mapped[str | None] = mapped_column(String(100), nullable=True)  # ticket_quality
+    complexity: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # resolution_complexity
+    reassignment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    normalized_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationship
     dataset: Mapped[Dataset] = relationship(back_populates="tickets")
@@ -91,9 +106,12 @@ class Embedding(Base):
     Idempotency:
     - Unique constraint on (dataset_id, ticket_id, model_name) to prevent duplicates for same dataset+model.
     """
+
     __tablename__ = "embeddings"
     __table_args__ = (
-        UniqueConstraint("dataset_id", "ticket_id", "model_name", name="uq_embeddings_dataset_ticket_model"),
+        UniqueConstraint(
+            "dataset_id", "ticket_id", "model_name", name="uq_embeddings_dataset_ticket_model"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -121,14 +139,19 @@ class ClusterRun(Base):
     """
     Clustering run metadata for a dataset/model and algorithm.
     """
+
     __tablename__ = "cluster_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     model_name: Mapped[str] = mapped_column(Text, nullable=False)
     algorithm: Mapped[str] = mapped_column(Text, nullable=False)
     params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     def __repr__(self) -> str:
         return f"ClusterRun(id={self.id!r}, dataset_id={self.dataset_id!r}, algorithm={self.algorithm!r}, model_name={self.model_name!r})"
@@ -138,14 +161,19 @@ class ClusterAssignment(Base):
     """
     Per-ticket cluster assignment for a specific run.
     """
+
     __tablename__ = "cluster_assignments"
     __table_args__ = (
         UniqueConstraint("run_id", "ticket_id", name="uq_cluster_assignments_run_ticket"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("cluster_runs.id", ondelete="CASCADE"), index=True, nullable=False)
-    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), index=True, nullable=False)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("cluster_runs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    ticket_id: Mapped[int] = mapped_column(
+        ForeignKey("tickets.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     cluster_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     def __repr__(self) -> str:
@@ -156,10 +184,13 @@ class ClusterMetric(Base):
     """
     Metrics for a clustering run (e.g., silhouette).
     """
+
     __tablename__ = "cluster_metrics"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("cluster_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("cluster_runs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     value: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
@@ -171,13 +202,16 @@ class ClusterTerm(Base):
     """
     Top TF-IDF terms per cluster for a given run.
     """
+
     __tablename__ = "cluster_terms"
     __table_args__ = (
         UniqueConstraint("run_id", "cluster_id", "term", name="uq_cluster_terms_run_cluster_term"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("cluster_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("cluster_runs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     cluster_id: Mapped[int] = mapped_column(Integer, nullable=False)
     term: Mapped[str] = mapped_column(Text, nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
@@ -201,6 +235,7 @@ class Analysis(Base):
       - filters: JSON blob for filter context (e.g., departments included)
       - created_at: timestamp of creation
     """
+
     __tablename__ = "analyses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -220,6 +255,7 @@ class Analysis(Base):
     def __repr__(self) -> str:
         return f"Analysis(id={self.id!r}, dataset_id={self.dataset_id!r}, prompt_version={self.prompt_version!r})"
 
+
 class AuditLog(Base):
     """
     Append-only audit log for administrative and sensitive actions.
@@ -232,6 +268,7 @@ class AuditLog(Base):
       - resource: resource identifier (e.g., 'dataset:{id}')
       - metadata: optional JSON payload (PII-free)
     """
+
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

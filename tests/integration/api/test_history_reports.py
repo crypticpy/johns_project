@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -91,7 +91,7 @@ def test_history_and_reports_endpoints_work_with_offline_analyzer():
     resp_analysis2 = client.post("/analysis/run", json=req2)
     assert resp_analysis2.status_code == 200, resp_analysis2.text
     payload_analysis2 = resp_analysis2.json()
-    aid2 = int(payload_analysis2["analysis_id"])
+    _aid2 = int(payload_analysis2["analysis_id"])
 
     # History: pagination
     resp_hist_page1 = client.get(
@@ -99,11 +99,11 @@ def test_history_and_reports_endpoints_work_with_offline_analyzer():
         params={"dataset_id": dataset_id, "limit": 1, "offset": 0},
     )
     assert resp_hist_page1.status_code == 200, resp_hist_page1.text
-    page1: Dict[str, Any] = resp_hist_page1.json()
+    page1: dict[str, Any] = resp_hist_page1.json()
     assert int(page1["limit"]) == 1
     assert int(page1["offset"]) == 0
     assert int(page1["total"]) >= 2
-    items1: List[Dict[str, Any]] = page1.get("items", [])
+    items1: list[dict[str, Any]] = page1.get("items", [])
     assert len(items1) == 1
 
     # Next page
@@ -112,8 +112,8 @@ def test_history_and_reports_endpoints_work_with_offline_analyzer():
         params={"dataset_id": dataset_id, "limit": 1, "offset": 1},
     )
     assert resp_hist_page2.status_code == 200, resp_hist_page2.text
-    page2: Dict[str, Any] = resp_hist_page2.json()
-    items2: List[Dict[str, Any]] = page2.get("items", [])
+    page2: dict[str, Any] = resp_hist_page2.json()
+    items2: list[dict[str, Any]] = page2.get("items", [])
     assert len(items2) == 1
     # IDs across pages should be distinct (order: latest first)
     assert items1[0]["id"] != items2[0]["id"]
@@ -124,16 +124,19 @@ def test_history_and_reports_endpoints_work_with_offline_analyzer():
         params={"dataset_id": dataset_id, "prompt_version": "v1", "limit": 10, "offset": 0},
     )
     assert resp_hist_v1.status_code == 200, resp_hist_v1.text
-    page_v1: Dict[str, Any] = resp_hist_v1.json()
-    items_v1: List[Dict[str, Any]] = page_v1.get("items", [])
+    page_v1: dict[str, Any] = resp_hist_v1.json()
+    items_v1: list[dict[str, Any]] = page_v1.get("items", [])
     assert any(int(it["id"]) == aid1 for it in items_v1)
 
     # Reports: assemble markdown and counts
     resp_report = client.get(f"/reports/{dataset_id}")
     assert resp_report.status_code == 200, resp_report.text
-    payload_report: Dict[str, Any] = resp_report.json()
+    payload_report: dict[str, Any] = resp_report.json()
     assert int(payload_report["dataset_id"]) == dataset_id
-    assert isinstance(payload_report.get("analysis_count"), int) and payload_report["analysis_count"] >= 2
+    assert (
+        isinstance(payload_report.get("analysis_count"), int)
+        and payload_report["analysis_count"] >= 2
+    )
     md = (payload_report.get("report_markdown") or "").strip()
     assert md, "report_markdown should be non-empty"
     assert "## Recent Analyses" in md

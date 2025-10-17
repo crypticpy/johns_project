@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from db.models import Dataset
-from db.repositories.embeddings_repo import EmbeddingsRepository
 from db.repositories.clusters_repo import ClustersRepository
+from db.repositories.embeddings_repo import EmbeddingsRepository
 from db.session import get_session
-from engine.analytics.clustering import (
-    hdbscan_cluster,
-    kmeans_cluster,
-    tfidf_top_terms,
-)
+from engine.analytics.clustering import hdbscan_cluster, kmeans_cluster, tfidf_top_terms
 from vector_store.faiss_index import FaissIndexAdapter
-
 
 router = APIRouter(prefix="/cluster", tags=["clustering"])
 
@@ -27,10 +22,10 @@ class ClusterRunResponse(TypedDict, total=False):
     model_name: str
     run_id: int
     silhouette: float | None
-    cluster_counts: Dict[int, int]
+    cluster_counts: dict[int, int]
 
 
-def _infer_model_name_from_faiss(dataset_id: int) -> Optional[str]:
+def _infer_model_name_from_faiss(dataset_id: int) -> str | None:
     """
     Best-effort inference of model_name used for embeddings via FAISS metadata.
     Returns None if unavailable.
@@ -78,8 +73,8 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
     # Parse JSON body defensively
     try:
         body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from e
 
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Request body must be a JSON object")
@@ -90,8 +85,8 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
         raise HTTPException(status_code=400, detail="dataset_id is required")
     try:
         dataset_id_int = int(dataset_id_val)
-    except Exception:
-        raise HTTPException(status_code=400, detail="dataset_id must be an integer")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="dataset_id must be an integer") from e
 
     # Validate dataset existence
     dataset = db.get(Dataset, dataset_id_int)
@@ -117,34 +112,51 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
         model_name = _infer_model_name_from_faiss(dataset.id)
     if not model_name:
         # Without a model_name we cannot fetch embeddings
-        raise HTTPException(status_code=404, detail="Embeddings model_name could not be resolved for dataset")
+        raise HTTPException(
+            status_code=404, detail="Embeddings model_name could not be resolved for dataset"
+        )
 
     # Verify embeddings exist
-    if not EmbeddingsRepository.exists_for_dataset(db, dataset_id=dataset.id, model_name=model_name):
-        raise HTTPException(status_code=404, detail=f"Embeddings for dataset {dataset.id} and model '{model_name}' not found")
+    if not EmbeddingsRepository.exists_for_dataset(
+        db, dataset_id=dataset.id, model_name=model_name
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Embeddings for dataset {dataset.id} and model '{model_name}' not found",
+        )
 
     # Fetch embeddings and align texts to ids for TF-IDF
-    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(db, dataset_id=dataset.id, model_name=model_name)
+    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(
+        db, dataset_id=dataset.id, model_name=model_name
+    )
     if not ids_all or not vecs_all or len(ids_all) != len(vecs_all):
-        raise HTTPException(status_code=422, detail="No embeddings vectors available for clustering")
+        raise HTTPException(
+            status_code=422, detail="No embeddings vectors available for clustering"
+        )
 
     # Build text map for aligned TF-IDF input
-    ticket_ids_texts, candidate_texts = EmbeddingsRepository.fetch_candidate_texts(db, dataset_id=dataset.id, limit=250_000)
-    text_map: Dict[int, str] = {}
-    for tid, text in zip(ticket_ids_texts, candidate_texts):
+    ticket_ids_texts, candidate_texts = EmbeddingsRepository.fetch_candidate_texts(
+        db, dataset_id=dataset.id, limit=250_000
+    )
+    text_map: dict[int, str] = {}
+    for tid, text in zip(ticket_ids_texts, candidate_texts, strict=False):
         text_map[int(tid)] = str(text or "").strip()
-    texts_aligned: List[str] = [text_map.get(int(tid), "") for tid in ids_all]
+    texts_aligned: list[str] = [text_map.get(int(tid), "") for tid in ids_all]
 
     # Run clustering
     try:
         if algorithm_in == "kmeans":
             n_clusters_val = params_in.get("n_clusters", None)
             if n_clusters_val is None:
-                raise HTTPException(status_code=400, detail="params.n_clusters is required for kmeans")
+                raise HTTPException(
+                    status_code=400, detail="params.n_clusters is required for kmeans"
+                )
             try:
                 n_clusters_int = int(n_clusters_val)
-            except Exception:
-                raise HTTPException(status_code=400, detail="params.n_clusters must be an integer")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail="params.n_clusters must be an integer"
+                ) from e
 
             result = kmeans_cluster(vectors=vecs_all, n_clusters=n_clusters_int, random_state=42)
         else:
@@ -154,8 +166,11 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
             try:
                 min_cluster_size_int = int(min_cluster_size)
                 min_samples_int = int(min_samples)
-            except Exception:
-                raise HTTPException(status_code=400, detail="params.min_cluster_size and min_samples must be integers")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail="params.min_cluster_size and min_samples must be integers",
+                ) from e
 
             try:
                 result = hdbscan_cluster(
@@ -165,21 +180,23 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
                 )
             except RuntimeError as e:
                 # Optional dependency unavailable
-                raise HTTPException(status_code=422, detail=f"HDBSCAN unavailable: {e}")
+                raise HTTPException(status_code=422, detail=f"HDBSCAN unavailable: {e}") from e
     except ValueError as e:
         # Input/parameter validation errors from engine
         msg = str(e)
         if "insufficient vectors" in msg.lower():
-            raise HTTPException(status_code=422, detail=msg)
-        raise HTTPException(status_code=400, detail=msg)
+            raise HTTPException(status_code=422, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
     except HTTPException:
         # Reraise mapped HTTP exceptions
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Clustering failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Clustering failed: {e}") from e
 
-    assignments: List[int] = list(result.get("assignments") or [])
-    silhouette: float | None = result.get("silhouette") if isinstance(result.get("silhouette"), (float, int)) else None
+    assignments: list[int] = list(result.get("assignments") or [])
+    silhouette: float | None = (
+        result.get("silhouette") if isinstance(result.get("silhouette"), (float, int)) else None
+    )
 
     if len(assignments) != len(ids_all):
         raise HTTPException(status_code=500, detail="Engine returned invalid assignments length")
@@ -193,26 +210,40 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
             algorithm=algorithm_in,
             params={
                 "algorithm": algorithm_in,
-                **({"n_clusters": int(params_in.get("n_clusters"))} if algorithm_in == "kmeans" and params_in.get("n_clusters") is not None else {}),
-                **({"min_cluster_size": int(params_in.get("min_cluster_size", 5))} if algorithm_in == "hdbscan" else {}),
-                **({"min_samples": int(params_in.get("min_samples", 5))} if algorithm_in == "hdbscan" else {}),
+                **(
+                    {"n_clusters": int(params_in.get("n_clusters"))}
+                    if algorithm_in == "kmeans" and params_in.get("n_clusters") is not None
+                    else {}
+                ),
+                **(
+                    {"min_cluster_size": int(params_in.get("min_cluster_size", 5))}
+                    if algorithm_in == "hdbscan"
+                    else {}
+                ),
+                **(
+                    {"min_samples": int(params_in.get("min_samples", 5))}
+                    if algorithm_in == "hdbscan"
+                    else {}
+                ),
             },
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create cluster run: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create cluster run: {e}") from e
 
     # Persist assignments
     try:
-        tuples: List[Tuple[int, int]] = [(int(tid), int(cid)) for tid, cid in zip(ids_all, assignments)]
+        tuples: list[tuple[int, int]] = [
+            (int(tid), int(cid)) for tid, cid in zip(ids_all, assignments, strict=False)
+        ]
         ClustersRepository.store_assignments(db, run_id=run_id, assignments=tuples, batch_size=1000)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to store assignments: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to store assignments: {e}") from e
 
     # Persist metrics (silhouette)
     try:
         ClustersRepository.store_metrics(db, run_id=run_id, metrics={"silhouette": silhouette})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to store metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to store metrics: {e}") from e
 
     # Compute and persist TF-IDF top terms per cluster (skip noise)
     try:
@@ -220,13 +251,15 @@ async def run_clustering(request: Request, db: Session = Depends(get_session)) -
         ClustersRepository.store_top_terms(db, run_id=run_id, top_terms=top_terms, batch_size=1000)
     except Exception as e:
         # Do not fail the entire run if TF-IDF fails; but surface error for observability
-        raise HTTPException(status_code=500, detail=f"Failed to compute/store top terms: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to compute/store top terms: {e}"
+        ) from e
 
     # Build response summary
     try:
         summary = ClustersRepository.fetch_run_summary(db, run_id=run_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch run summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch run summary: {e}") from e
 
     payload: ClusterRunResponse = {
         "dataset_id": dataset.id,

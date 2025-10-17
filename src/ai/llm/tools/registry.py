@@ -3,16 +3,20 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
+from ai.llm.factory import select_analyzer
+from ai.rerank.factory import select_reranker
+from ai.rerank.interface import RerankError
 from db.models import Analysis, Dataset, Ticket
-from db.repositories.audit_repo import AuditRepository
 from db.repositories.analyses_repo import AnalysesRepository
+from db.repositories.audit_repo import AuditRepository
 from db.repositories.clusters_repo import ClustersRepository
 from db.repositories.datasets_repo import DatasetsRepository
 from db.repositories.embeddings_repo import EmbeddingsRepository
@@ -21,14 +25,12 @@ from db.session import SessionLocal
 from engine.analytics.clustering import hdbscan_cluster, kmeans_cluster, tfidf_top_terms
 from engine.features.sampling import SamplingConfig, stratified_sample
 from engine.ingest.loader import validate_and_load
-from ai.llm.factory import select_analyzer
-from ai.rerank.factory import select_reranker
-from ai.rerank.interface import RerankError
 from vector_store.faiss_index import FaissIndexAdapter, FaissIndexError
 
 # Optional metrics (Prometheus) — mirror pattern in src/observability/metrics.py
 try:
     from prometheus_client import Counter, Histogram  # type: ignore
+
     _PROM_AVAILABLE = True
 except Exception:  # pragma: no cover
     Counter = None  # type: ignore[assignment]
@@ -47,7 +49,11 @@ except Exception as _e:
 try:
     from observability.tracing import tracer  # type: ignore
 except Exception:
-    tracer = lambda: None  # type: ignore
+
+    def _noop_tracer():
+        return None
+
+    tracer = _noop_tracer  # type: ignore[assignment]
 
 
 _LOGGER = logging.getLogger("sd_onboarding")
@@ -57,6 +63,7 @@ _LOGGER = logging.getLogger("sd_onboarding")
 # Pydantic Models (IO Schemas)
 # ----------------------------
 
+
 class StrictModel(BaseModel):
     # Forbid extra fields and disable protected namespace warnings (e.g., 'model_name')
     model_config = ConfigDict(extra="forbid", str_min_length=0, protected_namespaces=())
@@ -65,7 +72,7 @@ class StrictModel(BaseModel):
 # 1) tool.ingest.upload
 class IngestUploadInput(StrictModel):
     file_path: str = Field(min_length=1)
-    dataset_name: Optional[str] = None
+    dataset_name: str | None = None
 
 
 class IngestUploadOutput(StrictModel):
@@ -82,9 +89,9 @@ class IngestUploadOutput(StrictModel):
 
 class EmbedRunInput(StrictModel):
     dataset_id: int = Field(ge=1)
-    backend: Optional[Literal["sentence-transformers", "builtin"]] = Field(default=None)
-    model_name: Optional[str] = None
-    batch_size: Optional[int] = Field(default=None, ge=1)
+    backend: Literal["sentence-transformers", "builtin"] | None = Field(default=None)
+    model_name: str | None = None
+    batch_size: int | None = Field(default=None, ge=1)
 
 
 class EmbedRunOutput(StrictModel):
@@ -98,49 +105,49 @@ class EmbedRunOutput(StrictModel):
 
 # 3) tool.search.nn
 class SearchFilters(StrictModel):
-    department: Optional[List[str]] = None
-    product: Optional[List[str]] = None
+    department: list[str] | None = None
+    product: list[str] | None = None
 
 
 class SearchNNInput(StrictModel):
     dataset_id: int = Field(ge=1)
     query_text: str = Field(min_length=1)
-    k: Optional[int] = Field(default=10, ge=1)
-    filters: Optional[SearchFilters] = None
-    rerank: Optional[bool] = False
-    rerank_backend: Optional[str] = None  # "builtin" | "cross-encoder"
+    k: int | None = Field(default=10, ge=1)
+    filters: SearchFilters | None = None
+    rerank: bool | None = False
+    rerank_backend: str | None = None  # "builtin" | "cross-encoder"
 
 
 class SearchNNItem(StrictModel):
     ticket_id: int = Field(ge=1)
     score: float
-    department: Optional[str] = None
-    product: Optional[str] = None
-    summary: Optional[str] = None
+    department: str | None = None
+    product: str | None = None
+    summary: str | None = None
 
 
 class SearchNNOutput(StrictModel):
     dataset_id: int = Field(ge=1)
     k: int = Field(ge=1)
-    backend: Optional[str] = None
+    backend: str | None = None
     model_name: str
     rerank: bool
-    rerank_backend: Optional[str] = None
-    results: List[SearchNNItem]
+    rerank_backend: str | None = None
+    results: list[SearchNNItem]
 
 
 # 4) tool.cluster.run
 class ClusterParams(StrictModel):
-    n_clusters: Optional[int] = Field(default=None, ge=2)
-    min_cluster_size: Optional[int] = Field(default=None, ge=2)
-    min_samples: Optional[int] = Field(default=None, ge=1)
+    n_clusters: int | None = Field(default=None, ge=2)
+    min_cluster_size: int | None = Field(default=None, ge=2)
+    min_samples: int | None = Field(default=None, ge=1)
 
 
 class ClusterRunInput(StrictModel):
     dataset_id: int = Field(ge=1)
     algorithm: str  # "kmeans" | "hdbscan"
-    params: Optional[ClusterParams] = None
-    model_name: Optional[str] = None
+    params: ClusterParams | None = None
+    model_name: str | None = None
 
 
 class ClusterRunOutput(StrictModel):
@@ -148,19 +155,19 @@ class ClusterRunOutput(StrictModel):
     algorithm: str
     model_name: str
     run_id: int = Field(ge=1)
-    silhouette: Optional[float] = None
-    cluster_counts: Dict[int, int]
+    silhouette: float | None = None
+    cluster_counts: dict[int, int]
 
 
 # 5) tool.analysis.run
 class AnalysisRunInput(StrictModel):
     dataset_id: int = Field(ge=1)
     question: str = Field(min_length=1)
-    prompt_version: Optional[str] = "v1"
-    analyzer_backend: Optional[str] = None  # "openai" | "offline"
-    max_tickets: Optional[int] = 50
-    token_budget: Optional[int] = 2000
-    compare_dataset_id: Optional[int] = Field(default=None, ge=1)
+    prompt_version: str | None = "v1"
+    analyzer_backend: str | None = None  # "openai" | "offline"
+    max_tickets: int | None = 50
+    token_budget: int | None = 2000
+    compare_dataset_id: int | None = Field(default=None, ge=1)
 
 
 class AnalysisRunOutput(StrictModel):
@@ -168,7 +175,7 @@ class AnalysisRunOutput(StrictModel):
     dataset_id: int = Field(ge=1)
     prompt_version: str
     ticket_count: int = Field(ge=0)
-    created_at: Optional[str] = None  # ISO8601
+    created_at: str | None = None  # ISO8601
 
 
 # 6) tool.reports.get
@@ -188,7 +195,7 @@ class PromptsListInput(StrictModel):
 
 
 class PromptsListOutput(StrictModel):
-    versions: List[str]
+    versions: list[str]
 
 
 class PromptsLoadInput(StrictModel):
@@ -198,13 +205,13 @@ class PromptsLoadInput(StrictModel):
 class PromptsLoadOutput(StrictModel):
     version: str
     template: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class PromptsSaveInput(StrictModel):
     version: str = Field(min_length=1)
     template: str = Field(min_length=1)
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class PromptsSaveOutput(StrictModel):
@@ -215,10 +222,10 @@ class PromptsSaveOutput(StrictModel):
 class HistoryListInput(StrictModel):
     limit: int = Field(ge=1, le=500, default=50)
     offset: int = Field(ge=0, default=0)
-    dataset_id: Optional[int] = Field(default=None, ge=1)
-    prompt_version: Optional[str] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
+    dataset_id: int | None = Field(default=None, ge=1)
+    prompt_version: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
 
 
 class HistoryItem(StrictModel):
@@ -227,43 +234,50 @@ class HistoryItem(StrictModel):
     prompt_version: str
     question: str
     ticket_count: int = Field(ge=0)
-    created_at: Optional[str] = None
+    created_at: str | None = None
 
 
 class HistoryListOutput(StrictModel):
     limit: int = Field(ge=1)
     offset: int = Field(ge=0)
     total: int = Field(ge=0)
-    items: List[HistoryItem]
+    items: list[HistoryItem]
 
 
 # ---------------------------------
 # Tool Spec, Context, Error Mapping
 # ---------------------------------
 
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
     description: str
-    input_model: Type[BaseModel]
-    output_model: Type[BaseModel]
-    roles_required: Optional[Set[str]] = None
+    input_model: type[BaseModel]
+    output_model: type[BaseModel]
+    roles_required: set[str] | None = None
     audit_sensitive: bool = False
-    adapter: Optional[Callable[[Dict[str, Any], "ToolContext", Session], Dict[str, Any]]] = None
+    adapter: Callable[[dict[str, Any], ToolContext, Session], dict[str, Any]] | None = None
 
 
 @dataclass
 class ToolContext:
     subject: str
-    roles: Set[str]
+    roles: set[str]
     request_id: str
-    token_budget: Optional[int] = None
-    step_limit: Optional[int] = None
-    dataset_id: Optional[int] = None
+    token_budget: int | None = None
+    step_limit: int | None = None
+    dataset_id: int | None = None
 
 
-def build_tool_context_from_claims(claims: Dict[str, Any], *, request_id: str, token_budget: Optional[int] = None,
-                                   step_limit: Optional[int] = None, dataset_id: Optional[int] = None) -> ToolContext:
+def build_tool_context_from_claims(
+    claims: dict[str, Any],
+    *,
+    request_id: str,
+    token_budget: int | None = None,
+    step_limit: int | None = None,
+    dataset_id: int | None = None,
+) -> ToolContext:
     """
     Build ToolContext from decoded JWT claims.
 
@@ -271,7 +285,7 @@ def build_tool_context_from_claims(claims: Dict[str, Any], *, request_id: str, t
       - roles: List[str] or comma-separated string
       - role: str
     """
-    roles: Set[str] = set()
+    roles: set[str] = set()
     raw_roles = claims.get("roles")
     if isinstance(raw_roles, list):
         for r in raw_roles:
@@ -297,19 +311,31 @@ def build_tool_context_from_claims(claims: Dict[str, Any], *, request_id: str, t
 
 
 # Metrics for tools
-_TOOL_CALL_COUNT = Counter("tool_call_count", "Total tool calls", labelnames=("tool_name",)) if _PROM_AVAILABLE else None
-_TOOL_LATENCY_SECONDS = Histogram(
-    "tool_latency_seconds",
-    "Tool call latency in seconds",
-    labelnames=("tool_name",),
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
-) if _PROM_AVAILABLE else None
-_RERANK_LATENCY_SECONDS = Histogram(
-    "rerank_latency_seconds",
-    "Rerank latency seconds",
-    labelnames=("backend",),
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
-) if _PROM_AVAILABLE else None
+_TOOL_CALL_COUNT = (
+    Counter("tool_call_count", "Total tool calls", labelnames=("tool_name",))
+    if _PROM_AVAILABLE
+    else None
+)
+_TOOL_LATENCY_SECONDS = (
+    Histogram(
+        "tool_latency_seconds",
+        "Tool call latency in seconds",
+        labelnames=("tool_name",),
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
+    )
+    if _PROM_AVAILABLE
+    else None
+)
+_RERANK_LATENCY_SECONDS = (
+    Histogram(
+        "rerank_latency_seconds",
+        "Rerank latency seconds",
+        labelnames=("backend",),
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
+    )
+    if _PROM_AVAILABLE
+    else None
+)
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -319,9 +345,9 @@ def _env_flag(name: str, default: bool) -> bool:
     return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _sanitize_args_summary(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def _sanitize_args_summary(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
     # Keep low-cardinality identifiers only
-    out: Dict[str, Any] = {"tool_name": tool_name}
+    out: dict[str, Any] = {"tool_name": tool_name}
     for key in ("dataset_id", "k", "rerank", "rerank_backend", "version", "algorithm"):
         v = args.get(key)
         if v is not None:
@@ -329,8 +355,8 @@ def _sanitize_args_summary(tool_name: str, args: Dict[str, Any]) -> Dict[str, An
     return out
 
 
-def _sanitize_result_summary(tool_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"tool_name": tool_name}
+def _sanitize_result_summary(tool_name: str, result: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {"tool_name": tool_name}
     for key in ("dataset_id", "analysis_id", "run_id", "analysis_count"):
         v = result.get(key)
         if v is not None:
@@ -340,7 +366,7 @@ def _sanitize_result_summary(tool_name: str, result: Dict[str, Any]) -> Dict[str
     return out
 
 
-def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+def _parse_iso_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     s = str(value).strip()
@@ -348,8 +374,8 @@ def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
         if len(s) <= 10 and "-" in s and "T" not in s:
             return datetime.fromisoformat(s + "T00:00:00")
         return datetime.fromisoformat(s)
-    except Exception:
-        raise ValueError(f"Invalid ISO datetime: {value}")
+    except Exception as e:
+        raise ValueError(f"Invalid ISO datetime: {value}") from e
 
 
 def _map_exception_category(e: Exception) -> str:
@@ -374,7 +400,8 @@ def _map_exception_category(e: Exception) -> str:
 # Tool Adapters
 # ---------------
 
-def _adapter_ingest_upload(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+
+def _adapter_ingest_upload(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     file_path = str(args["file_path"])
     dataset_name = str(args.get("dataset_name") or "") or None
     # Read bytes safely
@@ -382,7 +409,7 @@ def _adapter_ingest_upload(args: Dict[str, Any], ctx: ToolContext, db: Session) 
         with open(file_path, "rb") as f:
             file_bytes = f.read()
     except Exception as e:
-        raise ValueError(f"Failed to read file: {e}")
+        raise ValueError(f"Failed to read file: {e}") from e
 
     df, meta = validate_and_load(file_bytes, os.path.basename(file_path))
     file_hash: str = str(meta["file_hash"])
@@ -414,7 +441,7 @@ def _adapter_ingest_upload(args: Dict[str, Any], ctx: ToolContext, db: Session) 
     ).model_dump()
 
 
-def _adapter_embed_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_embed_run(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     dataset_id = int(args["dataset_id"])
     backend_in = args.get("backend")
     model_name_in = args.get("model_name")
@@ -451,16 +478,20 @@ def _adapter_embed_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -> D
         db,
         dataset_id=dataset_id,
         model_name=model_name,
-        records=list(zip(ticket_ids, vectors)),
+        records=list(zip(ticket_ids, vectors, strict=False)),
         batch_size=1000,
     )
 
-    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(db, dataset_id=dataset_id, model_name=model_name)
+    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(
+        db, dataset_id=dataset_id, model_name=model_name
+    )
     vector_dim: int = 0 if not vecs_all else len(vecs_all[0])
 
     index = FaissIndexAdapter()
     if ids_all and vecs_all:
-        index.build_index(dataset_id=dataset_id, vectors=vecs_all, ids=ids_all, model_name=model_name)
+        index.build_index(
+            dataset_id=dataset_id, vectors=vecs_all, ids=ids_all, model_name=model_name
+        )
 
     return EmbedRunOutput(
         dataset_id=dataset_id,
@@ -472,15 +503,15 @@ def _adapter_embed_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -> D
     ).model_dump()
 
 
-def _adapter_search_nn(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_search_nn(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     dataset_id = int(args["dataset_id"])
     q_text = str(args["query_text"]).strip()
     k = int(args.get("k") or 10)
     filters = args.get("filters") or {}
-    departments: Optional[List[str]] = filters.get("department") or None
-    products: Optional[List[str]] = filters.get("product") or None
+    departments: list[str] | None = filters.get("department") or None
+    products: list[str] | None = filters.get("product") or None
     rerank_flag: bool = bool(args.get("rerank") or False)
-    rerank_backend_in: Optional[str] = args.get("rerank_backend") or None
+    rerank_backend_in: str | None = args.get("rerank_backend") or None
 
     ds = db.get(Dataset, dataset_id)
     if ds is None:
@@ -511,7 +542,7 @@ def _adapter_search_nn(args: Dict[str, Any], ctx: ToolContext, db: Session) -> D
     query_vec = vecs[0]
 
     start_search = time.monotonic()
-    nn: List[Tuple[int, float]] = index.search(dataset_id=dataset_id, vector=query_vec, k=k)
+    nn: list[tuple[int, float]] = index.search(dataset_id=dataset_id, vector=query_vec, k=k)
     _search_latency = max(0.0, time.monotonic() - start_search)
     # Optional metrics: VECTOR_SEARCH_LATENCY in metrics.py is global middleware; we emit tool-level only here.
 
@@ -527,21 +558,32 @@ def _adapter_search_nn(args: Dict[str, Any], ctx: ToolContext, db: Session) -> D
         ).model_dump()
 
     ordered_ids = [tid for tid, _ in nn]
-    score_map: Dict[int, float] = {tid: float(score) for tid, score in nn}
+    score_map: dict[int, float] = {tid: float(score) for tid, score in nn}
 
     # Fetch matched tickets
-    from sqlalchemy import Select, and_, select as sa_select  # local import to avoid global symbol clash
-    stmt: Select = sa_select(Ticket).where(and_(Ticket.id.in_(ordered_ids), Ticket.dataset_id == dataset_id))
-    rows: List[Ticket] = list(db.execute(stmt).scalars().all())
-    by_id: Dict[int, Ticket] = {int(t.id): t for t in rows}
+    from sqlalchemy import Select, and_  # local import to avoid global symbol clash
+    from sqlalchemy import select as sa_select
+
+    stmt: Select = sa_select(Ticket).where(
+        and_(Ticket.id.in_(ordered_ids), Ticket.dataset_id == dataset_id)
+    )
+    rows: list[Ticket] = list(db.execute(stmt).scalars().all())
+    by_id: dict[int, Ticket] = {int(t.id): t for t in rows}
 
     # Optional rerank
     if rerank_flag:
         reranker = select_reranker(
-            "builtin" if (rerank_backend_in and rerank_backend_in.strip().lower() in ("builtin", "lexical")) else
-            ("cross-encoder" if rerank_backend_in and rerank_backend_in.strip().lower().replace("_", "-") in ("cross-encoder", "crossencoder") else None)  # type: ignore[arg-type]
+            "builtin"
+            if (rerank_backend_in and rerank_backend_in.strip().lower() in ("builtin", "lexical"))
+            else (
+                "cross-encoder"
+                if rerank_backend_in
+                and rerank_backend_in.strip().lower().replace("_", "-")
+                in ("cross-encoder", "crossencoder")
+                else None
+            )  # type: ignore[arg-type]
         )
-        candidates: List[Tuple[int, str]] = []
+        candidates: list[tuple[int, str]] = []
         for tid in ordered_ids:
             t = by_id.get(int(tid))
             if t is None:
@@ -552,16 +594,20 @@ def _adapter_search_nn(args: Dict[str, Any], ctx: ToolContext, db: Session) -> D
         reranked = reranker.rerank(q_text, candidates)
         rr_latency = max(0.0, time.monotonic() - start_rerank)
         if _PROM_AVAILABLE and _RERANK_LATENCY_SECONDS is not None:
-            backend_label = "cross-encoder" if type(reranker).__name__ == "CrossEncoderReranker" else "builtin"
+            backend_label = (
+                "cross-encoder" if type(reranker).__name__ == "CrossEncoderReranker" else "builtin"
+            )
             # type: ignore[union-attr]
-            _RERANK_LATENCY_SECONDS.labels(backend=backend_label).observe(rr_latency)  # pragma: no cover
+            _RERANK_LATENCY_SECONDS.labels(backend=backend_label).observe(
+                rr_latency
+            )  # pragma: no cover
         ordered_ids = [tid for tid, _ in reranked]
         score_map = {tid: float(score) for tid, score in reranked}
 
     dept_set = set([d for d in (departments or []) if isinstance(d, str)])
     prod_set = set([p for p in (products or []) if isinstance(p, str)])
 
-    results: List[SearchNNItem] = []
+    results: list[SearchNNItem] = []
     for tid in ordered_ids:
         t = by_id.get(int(tid))
         if t is None:
@@ -588,16 +634,25 @@ def _adapter_search_nn(args: Dict[str, Any], ctx: ToolContext, db: Session) -> D
         backend=backend_choice or None,
         model_name=model_name,
         rerank=bool(rerank_flag),
-        rerank_backend=(("builtin" if rerank_backend_in and rerank_backend_in.strip().lower() in ("builtin", "lexical") else
-                         ("cross-encoder" if rerank_backend_in and rerank_backend_in.strip().lower().replace("_", "-") in ("cross-encoder", "crossencoder") else None))),
+        rerank_backend=(
+            "builtin"
+            if rerank_backend_in and rerank_backend_in.strip().lower() in ("builtin", "lexical")
+            else (
+                "cross-encoder"
+                if rerank_backend_in
+                and rerank_backend_in.strip().lower().replace("_", "-")
+                in ("cross-encoder", "crossencoder")
+                else None
+            )
+        ),
         results=[r for r in results],
     ).model_dump()
 
 
-def _adapter_cluster_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_cluster_run(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     dataset_id = int(args["dataset_id"])
     algorithm = str(args["algorithm"]).strip().lower()
-    params_in: Dict[str, Any] = dict((args.get("params") or {}))
+    params_in: dict[str, Any] = dict(args.get("params") or {})
     model_name_in = args.get("model_name")
 
     ds = db.get(Dataset, dataset_id)
@@ -616,16 +671,25 @@ def _adapter_cluster_run(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
     if not model_name:
         raise ValueError("Embeddings model_name could not be resolved for dataset")
 
-    if not EmbeddingsRepository.exists_for_dataset(db, dataset_id=dataset_id, model_name=model_name):
+    if not EmbeddingsRepository.exists_for_dataset(
+        db, dataset_id=dataset_id, model_name=model_name
+    ):
         raise ValueError(f"Embeddings for dataset {dataset_id} and model '{model_name}' not found")
 
-    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(db, dataset_id=dataset_id, model_name=model_name)
+    ids_all, vecs_all = EmbeddingsRepository.fetch_by_dataset(
+        db, dataset_id=dataset_id, model_name=model_name
+    )
     if not ids_all or not vecs_all or len(ids_all) != len(vecs_all):
         raise RuntimeError("No embeddings vectors available for clustering")
 
-    ticket_ids_texts, candidate_texts = EmbeddingsRepository.fetch_candidate_texts(db, dataset_id=dataset_id, limit=250_000)
-    text_map: Dict[int, str] = {int(tid): str(text or "").strip() for tid, text in zip(ticket_ids_texts, candidate_texts)}
-    texts_aligned: List[str] = [text_map.get(int(tid), "") for tid in ids_all]
+    ticket_ids_texts, candidate_texts = EmbeddingsRepository.fetch_candidate_texts(
+        db, dataset_id=dataset_id, limit=250_000
+    )
+    text_map: dict[int, str] = {
+        int(tid): str(text or "").strip()
+        for tid, text in zip(ticket_ids_texts, candidate_texts, strict=False)
+    }
+    texts_aligned: list[str] = [text_map.get(int(tid), "") for tid in ids_all]
 
     # Engine clustering
     if algorithm == "kmeans":
@@ -638,15 +702,19 @@ def _adapter_cluster_run(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
         min_cluster_size = int(params_in.get("min_cluster_size", 5))
         min_samples = int(params_in.get("min_samples", 5))
         try:
-            result = hdbscan_cluster(vectors=vecs_all, min_cluster_size=min_cluster_size, min_samples=min_samples)
+            result = hdbscan_cluster(
+                vectors=vecs_all, min_cluster_size=min_cluster_size, min_samples=min_samples
+            )
         except RuntimeError as e:
             # Optional dependency unavailable
-            raise RuntimeError(f"HDBSCAN unavailable: {e}")
+            raise RuntimeError(f"HDBSCAN unavailable: {e}") from e
     else:
         raise ValueError("algorithm must be 'kmeans' or 'hdbscan'")
 
-    assignments: List[int] = list(result.get("assignments") or [])
-    silhouette: Optional[float] = result.get("silhouette") if isinstance(result.get("silhouette"), (float, int)) else None
+    assignments: list[int] = list(result.get("assignments") or [])
+    silhouette: float | None = (
+        result.get("silhouette") if isinstance(result.get("silhouette"), (float, int)) else None
+    )
     if len(assignments) != len(ids_all):
         raise RuntimeError("Engine returned invalid assignments length")
 
@@ -657,12 +725,26 @@ def _adapter_cluster_run(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
         algorithm=algorithm,
         params={
             "algorithm": algorithm,
-            **({"n_clusters": int(params_in.get("n_clusters"))} if algorithm == "kmeans" and params_in.get("n_clusters") is not None else {}),
-            **({"min_cluster_size": int(params_in.get("min_cluster_size", 5))} if algorithm == "hdbscan" else {}),
-            **({"min_samples": int(params_in.get("min_samples", 5))} if algorithm == "hdbscan" else {}),
+            **(
+                {"n_clusters": int(params_in.get("n_clusters"))}
+                if algorithm == "kmeans" and params_in.get("n_clusters") is not None
+                else {}
+            ),
+            **(
+                {"min_cluster_size": int(params_in.get("min_cluster_size", 5))}
+                if algorithm == "hdbscan"
+                else {}
+            ),
+            **(
+                {"min_samples": int(params_in.get("min_samples", 5))}
+                if algorithm == "hdbscan"
+                else {}
+            ),
         },
     )
-    tuples: List[Tuple[int, int]] = [(int(tid), int(cid)) for tid, cid in zip(ids_all, assignments)]
+    tuples: list[tuple[int, int]] = [
+        (int(tid), int(cid)) for tid, cid in zip(ids_all, assignments, strict=False)
+    ]
     ClustersRepository.store_assignments(db, run_id=run_id, assignments=tuples, batch_size=1000)
     ClustersRepository.store_metrics(db, run_id=run_id, metrics={"silhouette": silhouette})
 
@@ -697,10 +779,10 @@ def _adapter_cluster_run(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
     ).model_dump()
 
 
-def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_analysis_run(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     dataset_id = int(args["dataset_id"])
     question = str(args["question"]).strip()
-    prompt_version = str((args.get("prompt_version") or "v1")).strip() or "v1"
+    prompt_version = str(args.get("prompt_version") or "v1").strip() or "v1"
     analyzer_backend = args.get("analyzer_backend")
     max_tickets = int(args.get("max_tickets") or 50)
     token_budget = int(args.get("token_budget") or 2000)
@@ -715,10 +797,13 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
         if ds2 is None:
             raise ValueError(f"Comparison dataset {compare_dataset_id} not found")
 
-    tickets: List[Ticket] = TicketsRepository.query_filtered(db, dataset_id=dataset_id, limit=100_000, offset=0)
+    tickets: list[Ticket] = TicketsRepository.query_filtered(
+        db, dataset_id=dataset_id, limit=100_000, offset=0
+    )
     # Build canonical DataFrame as in router
     import pandas as pd
-    def _tickets_to_df_local(tks: List[Ticket]) -> pd.DataFrame:
+
+    def _tickets_to_df_local(tks: list[Ticket]) -> pd.DataFrame:
         if not tks:
             return pd.DataFrame(
                 columns=[
@@ -731,7 +816,7 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
                     "summarize_ticket",
                 ]
             )
-        records: List[Dict[str, Any]] = []
+        records: list[dict[str, Any]] = []
         for t in tks:
             records.append(
                 {
@@ -752,35 +837,40 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
 
     context_text = str(sample.get("context_text") or "").strip() or "# Analysis Context\n(no data)"
     # Comparison block (compact)
-    comparison_metrics: Dict[str, Any] = {}
+    comparison_metrics: dict[str, Any] = {}
     if comparison_mode:
         # Reuse router behavior
-        def _build_comparison_section_local(session: Session, compare_id: int) -> Tuple[str, Dict[str, Any]]:
+        def _build_comparison_section_local(
+            session: Session, compare_id: int
+        ) -> tuple[str, dict[str, Any]]:
             ds2 = session.get(Dataset, int(compare_id))
             if ds2 is None:
                 raise ValueError(f"Comparison dataset {compare_id} not found")
-            tickets2: List[Ticket] = TicketsRepository.query_filtered(session, dataset_id=int(compare_id), limit=100_000, offset=0)
+            tickets2: list[Ticket] = TicketsRepository.query_filtered(
+                session, dataset_id=int(compare_id), limit=100_000, offset=0
+            )
             df2 = _tickets_to_df_local(tickets2)
             from engine.analytics.metrics import (
                 compute_complexity_distribution,
                 compute_department_volume,
                 compute_quality_distribution,
             )
+
             top_depts2 = compute_department_volume(df2, top_n=5)
             quality2 = compute_quality_distribution(df2)
             complexity2 = compute_complexity_distribution(df2)
-            lines: List[str] = []
+            lines: list[str] = []
             lines.append(f"## Comparison Dataset Summary (dataset_id={compare_id})")
             total2 = int(len(df2))
             lines.append(f"Total tickets: {total2}")
             if top_depts2:
-                dep_pairs = ["{}({})".format(d, c) for d, c in top_depts2]
+                dep_pairs = [f"{d}({c})" for d, c in top_depts2]
                 lines.append("Top Departments: " + ", ".join(dep_pairs))
             if quality2:
-                q_pairs = ["{}({})".format(k, v) for k, v in sorted(quality2.items())]
+                q_pairs = [f"{k}({v})" for k, v in sorted(quality2.items())]
                 lines.append("Quality: " + ", ".join(q_pairs))
             if complexity2:
-                c_pairs = ["{}({})".format(k, v) for k, v in sorted(complexity2.items())]
+                c_pairs = [f"{k}({v})" for k, v in sorted(complexity2.items())]
                 lines.append("Complexity: " + ", ".join(c_pairs))
             metrics_summary = {
                 "total_rows": total2,
@@ -795,9 +885,11 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
         comparison_metrics = {"comparison": compare_summary}
 
     try:
-        analyzer = select_analyzer(str(analyzer_backend).strip().lower() if analyzer_backend else None)  # type: ignore[arg-type]
+        analyzer = select_analyzer(
+            str(analyzer_backend).strip().lower() if analyzer_backend else None
+        )  # type: ignore[arg-type]
     except Exception as e:
-        raise RuntimeError(str(e))
+        raise RuntimeError(str(e)) from e
 
     result_md = analyzer.analyze(
         context=context_text,
@@ -806,12 +898,12 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
         comparison_mode=bool(comparison_mode),
     )
 
-    sampled_ids: List[int] = list(sample.get("sampled_ids") or [])
-    segments: List[Dict[str, Any]] = list(sample.get("segments") or [])
-    summary: Dict[str, Any] = dict(sample.get("summary") or {})
+    sampled_ids: list[int] = list(sample.get("sampled_ids") or [])
+    segments: list[dict[str, Any]] = list(sample.get("segments") or [])
+    summary: dict[str, Any] = dict(sample.get("summary") or {})
 
-    def _derive_departments_from_segments_local(segs: List[Dict[str, Any]]) -> List[str]:
-        depts: Set[str] = set()
+    def _derive_departments_from_segments_local(segs: list[dict[str, Any]]) -> list[str]:
+        depts: set[str] = set()
         for seg in segs or []:
             keymap = seg.get("key") or {}
             dep = keymap.get("Department")
@@ -820,7 +912,7 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
         return sorted(depts)
 
     departments_used = _derive_departments_from_segments_local(segments)
-    metrics: Dict[str, Any] = {
+    metrics: dict[str, Any] = {
         "sampling_summary": summary,
         "segments": segments,
         # Estimated tokens ~= chars/4
@@ -828,7 +920,7 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
     }
     if comparison_metrics:
         metrics.update(comparison_metrics)
-    filters: Dict[str, Any] = {}
+    filters: dict[str, Any] = {}
     if departments_used:
         filters["departments"] = departments_used
 
@@ -858,7 +950,7 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
     except Exception:
         pass
 
-    created_at_iso: Optional[str] = None
+    created_at_iso: str | None = None
     try:
         row = db.get(Analysis, int(analysis_id))
         if row and isinstance(row.created_at, datetime):
@@ -875,14 +967,20 @@ def _adapter_analysis_run(args: Dict[str, Any], ctx: ToolContext, db: Session) -
     ).model_dump()
 
 
-def _adapter_reports_get(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_reports_get(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     dataset_id = int(args["dataset_id"])
     ds = db.get(Dataset, dataset_id)
     if ds is None:
         raise ValueError(f"Dataset {dataset_id} not found")
 
     analyses = AnalysesRepository.list_analyses(
-        db, limit=10, offset=0, dataset_id=dataset_id, prompt_version=None, date_from=None, date_to=None
+        db,
+        limit=10,
+        offset=0,
+        dataset_id=dataset_id,
+        prompt_version=None,
+        date_from=None,
+        date_to=None,
     )
     analysis_count = len(analyses)
 
@@ -894,10 +992,14 @@ def _adapter_reports_get(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
         compute_quality_distribution,
         compute_reassignment_distribution,
     )
-    tickets: List[Ticket] = TicketsRepository.query_filtered(db, dataset_id=dataset_id, limit=100_000, offset=0)
+
+    tickets: list[Ticket] = TicketsRepository.query_filtered(
+        db, dataset_id=dataset_id, limit=100_000, offset=0
+    )
 
     import pandas as pd
-    def _tickets_to_df_local(tks: List[Ticket]) -> pd.DataFrame:
+
+    def _tickets_to_df_local(tks: list[Ticket]) -> pd.DataFrame:
         if not tks:
             return pd.DataFrame(
                 columns=[
@@ -909,7 +1011,7 @@ def _adapter_reports_get(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
                     "summarize_ticket",
                 ]
             )
-        records: List[Dict[str, Any]] = []
+        records: list[dict[str, Any]] = []
         for t in tks:
             records.append(
                 {
@@ -924,7 +1026,7 @@ def _adapter_reports_get(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
         return pd.DataFrame.from_records(records)
 
     df = _tickets_to_df_local(tickets)
-    lines: List[str] = []
+    lines: list[str] = []
     lines.append(f"# Dataset Report (dataset_id={dataset_id})\n")
     lines.append("## Recent Analyses")
     if analyses:
@@ -939,7 +1041,7 @@ def _adapter_reports_get(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
     # Snapshot
     lines.append("\n## Current Analytics Snapshot")
     lines.append(f"Total Tickets: {int(len(df))}")
-    dept_vol: List[Tuple[str, int]] = compute_department_volume(df, top_n=10)
+    dept_vol: list[tuple[str, int]] = compute_department_volume(df, top_n=10)
     lines.append("### Top Departments by Volume")
     if dept_vol:
         for dep, cnt in dept_vol:
@@ -984,20 +1086,23 @@ def _adapter_reports_get(args: Dict[str, Any], ctx: ToolContext, db: Session) ->
     ).model_dump()
 
 
-def _adapter_prompts_list(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_prompts_list(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     from ai.llm.prompts.store import list_versions
+
     return PromptsListOutput(versions=list_versions()).model_dump()
 
 
-def _adapter_prompts_load(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
-    from ai.llm.prompts.store import load_template, TEMPLATES_DIR, META_SUFFIX
+def _adapter_prompts_load(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
+    from ai.llm.prompts.store import META_SUFFIX, TEMPLATES_DIR, load_template
+
     version = str(args["version"])
     content = load_template(version)
     # Load metadata sidecar if present
     import json
     from pathlib import Path
+
     meta_path = Path(TEMPLATES_DIR) / f"{version}{META_SUFFIX}"
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
     try:
         if meta_path.exists():
             metadata = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -1006,11 +1111,12 @@ def _adapter_prompts_load(args: Dict[str, Any], ctx: ToolContext, db: Session) -
     return PromptsLoadOutput(version=version, template=content, metadata=metadata).model_dump()
 
 
-def _adapter_prompts_save(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_prompts_save(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     from ai.llm.prompts.store import save_template
+
     version = str(args["version"])
     template_body = str(args["template"])
-    metadata_in: Dict[str, Any] = dict(args.get("metadata") or {})
+    metadata_in: dict[str, Any] = dict(args.get("metadata") or {})
     metadata_in["template"] = template_body
     result = save_template(version=version, metadata=metadata_in)
     ok = bool(result.get("meta_written"))
@@ -1028,7 +1134,7 @@ def _adapter_prompts_save(args: Dict[str, Any], ctx: ToolContext, db: Session) -
     return PromptsSaveOutput(ok=ok).model_dump()
 
 
-def _adapter_history_list(args: Dict[str, Any], ctx: ToolContext, db: Session) -> Dict[str, Any]:
+def _adapter_history_list(args: dict[str, Any], ctx: ToolContext, db: Session) -> dict[str, Any]:
     limit = int(args.get("limit") or 50)
     offset = int(args.get("offset") or 0)
     dataset_id = args.get("dataset_id")
@@ -1055,7 +1161,7 @@ def _adapter_history_list(args: Dict[str, Any], ctx: ToolContext, db: Session) -
         date_to=dt,
     )
 
-    items: List[HistoryItem] = []
+    items: list[HistoryItem] = []
     for r in rows:
         items.append(
             HistoryItem(
@@ -1067,12 +1173,15 @@ def _adapter_history_list(args: Dict[str, Any], ctx: ToolContext, db: Session) -
                 created_at=r.created_at.isoformat() if getattr(r, "created_at", None) else None,
             )
         )
-    return HistoryListOutput(limit=int(limit), offset=int(offset), total=int(total), items=items).model_dump()
+    return HistoryListOutput(
+        limit=int(limit), offset=int(offset), total=int(total), items=items
+    ).model_dump()
 
 
 # ----------------
 # Tool Registry
 # ----------------
+
 
 class ToolRegistry:
     """
@@ -1086,7 +1195,7 @@ class ToolRegistry:
     """
 
     def __init__(self) -> None:
-        self._tools: Dict[str, ToolSpec] = {}
+        self._tools: dict[str, ToolSpec] = {}
         self._rbac_enabled = _env_flag("APP_ENABLE_RBAC", True)
         self._tracing_enabled = _env_flag("APP_ENABLE_TRACING", False)
         self._register_all()
@@ -1096,17 +1205,17 @@ class ToolRegistry:
             raise ValueError("ToolSpec requires name and adapter")
         self._tools[spec.name] = spec
 
-    def get_spec(self, name: str) -> Optional[ToolSpec]:
+    def get_spec(self, name: str) -> ToolSpec | None:
         return self._tools.get(name)
 
-    def validate_args(self, name: str, args: Dict[str, Any]) -> BaseModel:
+    def validate_args(self, name: str, args: dict[str, Any]) -> BaseModel:
         spec = self.get_spec(name)
         if spec is None:
             raise ValueError(f"Unknown tool: {name}")
         # Strict validation
         return spec.input_model.model_validate(args)
 
-    def execute(self, name: str, args: Dict[str, Any], context: ToolContext) -> Dict[str, Any]:
+    def execute(self, name: str, args: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         """
         Execute a tool with:
           1) name whitelist
@@ -1148,7 +1257,10 @@ class ToolRegistry:
                     "error": {
                         "category": "rbac_denied",
                         "message": "Insufficient role",
-                        "details": {"tool_name": name, "hint": f"required any of: {sorted(required_roles)}"},
+                        "details": {
+                            "tool_name": name,
+                            "hint": f"required any of: {sorted(required_roles)}",
+                        },
                     }
                 }
 
@@ -1201,9 +1313,14 @@ class ToolRegistry:
                     # type: ignore[attr-defined]
                     span.set_attribute("tool_name", name)
                     # type: ignore[attr-defined]
-                    span.set_attribute("args_summary", str(_sanitize_args_summary(name, validated_input.model_dump())))
+                    span.set_attribute(
+                        "args_summary",
+                        str(_sanitize_args_summary(name, validated_input.model_dump())),
+                    )
                     # type: ignore[attr-defined]
-                    span.set_attribute("result_summary", str(_sanitize_result_summary(name, result)))
+                    span.set_attribute(
+                        "result_summary", str(_sanitize_result_summary(name, result))
+                    )
                     span_ctx.__exit__(None, None, None)  # type: ignore[attr-defined]
                 except Exception:
                     pass
@@ -1214,7 +1331,9 @@ class ToolRegistry:
             if _PROM_AVAILABLE and _TOOL_LATENCY_SECONDS is not None:
                 # type: ignore[union-attr]
                 _TOOL_LATENCY_SECONDS.labels(tool_name=name).observe(duration)  # pragma: no cover
-            _LOGGER.error("tool.execute.error: name=%s duration=%.4fs error=%s", name, duration, str(e))
+            _LOGGER.error(
+                "tool.execute.error: name=%s duration=%.4fs error=%s", name, duration, str(e)
+            )
             category = _map_exception_category(e)
             return {
                 "error": {
@@ -1232,7 +1351,7 @@ class ToolRegistry:
     def _register_all(self) -> None:
         # Role map per spec
         default_roles = {"viewer", "analyst", "admin"}
-        roles_map: Dict[str, Optional[Set[str]]] = {
+        roles_map: dict[str, set[str] | None] = {
             "analysis.run": {"analyst", "admin"},
             "history.list": {"viewer", "admin"},
             "cluster.run": {"analyst", "admin"},

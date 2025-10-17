@@ -1,7 +1,7 @@
 import os
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, Set
 
 import pytest
 
@@ -22,12 +22,12 @@ os.environ.setdefault("APP_FAISS_ENABLED", "0")
 os.environ.setdefault("FAISS_ENABLED", "0")
 
 # Now import DB/session and initialize schema
-from db.session import init_db, SessionLocal  # noqa: E402
 from ai.llm.tools.registry import (  # noqa: E402
-    ToolRegistry,
     ToolContext,
+    ToolRegistry,
     build_tool_context_from_claims,
 )
+from db.session import SessionLocal, init_db  # noqa: E402
 
 init_db()
 
@@ -51,8 +51,9 @@ def registry() -> ToolRegistry:
 @pytest.fixture(scope="session")
 def ctx_builder():
     """Factory to build ToolContext from a set of roles."""
+
     def _make(roles: Iterable[str], request_id: str = "test-req") -> ToolContext:
-        claims: Dict[str, object] = {
+        claims: dict[str, object] = {
             "sub": "test-user",
             "roles": [str(r).strip().lower() for r in roles],
         }
@@ -63,6 +64,7 @@ def ctx_builder():
             step_limit=8,
             dataset_id=None,
         )
+
     return _make
 
 

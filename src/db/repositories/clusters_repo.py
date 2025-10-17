@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 from sqlalchemy import Select, and_, func, select
 from sqlalchemy.orm import Session
 
-from db.models import (
-    ClusterAssignment,
-    ClusterMetric,
-    ClusterRun,
-    ClusterTerm,
-    Ticket,
-)
+from db.models import ClusterAssignment, ClusterMetric, ClusterRun, ClusterTerm
 
 
 class ClustersRepository:
@@ -31,7 +26,7 @@ class ClustersRepository:
         dataset_id: int,
         model_name: str,
         algorithm: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ) -> int:
         run = ClusterRun(
             dataset_id=int(dataset_id),
@@ -48,14 +43,14 @@ class ClustersRepository:
     def store_assignments(
         db: Session,
         run_id: int,
-        assignments: Iterable[Tuple[int, int]],
+        assignments: Iterable[tuple[int, int]],
         batch_size: int = 1000,
     ) -> int:
         """
         Persist (ticket_id, cluster_id) pairs for a run. Returns number of rows inserted.
         Unique constraint on (run_id, ticket_id) prevents duplication.
         """
-        rows: List[ClusterAssignment] = []
+        rows: list[ClusterAssignment] = []
         inserted = 0
         for ticket_id, cluster_id in assignments:
             rows.append(
@@ -78,14 +73,14 @@ class ClustersRepository:
         return inserted
 
     @staticmethod
-    def store_metrics(db: Session, run_id: int, metrics: Dict[str, Any]) -> int:
+    def store_metrics(db: Session, run_id: int, metrics: dict[str, Any]) -> int:
         """
         Store metrics for a run. Values are wrapped into {'value': ...} for JSON stability.
         Returns number of metrics rows inserted.
         """
         if not metrics:
             return 0
-        rows: List[ClusterMetric] = []
+        rows: list[ClusterMetric] = []
         for name, val in metrics.items():
             rows.append(
                 ClusterMetric(
@@ -102,7 +97,7 @@ class ClustersRepository:
     def store_top_terms(
         db: Session,
         run_id: int,
-        top_terms: Dict[int, List[Tuple[str, float]]],
+        top_terms: dict[int, list[tuple[str, float]]],
         batch_size: int = 1000,
     ) -> int:
         """
@@ -111,7 +106,7 @@ class ClustersRepository:
         """
         if not top_terms:
             return 0
-        rows: List[ClusterTerm] = []
+        rows: list[ClusterTerm] = []
         inserted = 0
         for cid, pairs in top_terms.items():
             for term, score in pairs:
@@ -141,7 +136,7 @@ class ClustersRepository:
         dataset_id: int,
         model_name: str,
         algorithm: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         stmt: Select = (
             select(ClusterRun.id)
             .where(
@@ -160,7 +155,7 @@ class ClustersRepository:
         return int(row[0])
 
     @staticmethod
-    def fetch_run_summary(db: Session, run_id: int) -> Dict[str, Any]:
+    def fetch_run_summary(db: Session, run_id: int) -> dict[str, Any]:
         """
         Return summary payload with silhouette (if present) and cluster counts:
           {
@@ -175,7 +170,7 @@ class ClustersRepository:
             and_(ClusterMetric.run_id == int(run_id), ClusterMetric.name == "silhouette")
         )
         sil_row = db.execute(sil_stmt).first()
-        silhouette: Optional[float] = None
+        silhouette: float | None = None
         if sil_row and isinstance(sil_row[0], dict):
             val = sil_row[0].get("value", None)
             if isinstance(val, (int, float)):
@@ -188,7 +183,7 @@ class ClustersRepository:
             .group_by(ClusterAssignment.cluster_id)
         )
         counts_rows = db.execute(counts_stmt).all()
-        cluster_counts: Dict[int, int] = {int(cid): int(cnt) for cid, cnt in counts_rows}
+        cluster_counts: dict[int, int] = {int(cid): int(cnt) for cid, cnt in counts_rows}
         total_assigned = sum(cluster_counts.values())
 
         return {

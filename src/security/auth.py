@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Set
+from collections.abc import Iterable
+from typing import Any
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 
 from config.settings import get_settings
 
 
-def get_bearer_token(request: Request) -> Optional[str]:
+def get_bearer_token(request: Request) -> str | None:
     """
     Extract Bearer token from Authorization header.
 
@@ -23,7 +24,7 @@ def get_bearer_token(request: Request) -> Optional[str]:
     return None
 
 
-def verify_jwt(token: str, secret: str, algorithms: Iterable[str]) -> Dict[str, Any]:
+def verify_jwt(token: str, secret: str, algorithms: Iterable[str]) -> dict[str, Any]:
     """
     Verify and decode a JWT using HMAC algorithms.
 
@@ -32,22 +33,24 @@ def verify_jwt(token: str, secret: str, algorithms: Iterable[str]) -> Dict[str, 
     try:
         claims = jwt.decode(token, secret, algorithms=list(algorithms))  # type: ignore[arg-type]
         if not isinstance(claims, dict):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid JWT claims")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid JWT claims"
+            )
         return claims
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="JWT expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid JWT")
+    except jwt.ExpiredSignatureError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="JWT expired") from e
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid JWT") from e
 
 
-def _extract_roles(claims: Dict[str, Any]) -> Set[str]:
+def _extract_roles(claims: dict[str, Any]) -> set[str]:
     """
     Extract a set of roles from claims. Supports:
       - roles: List[str]
       - role: str (single role)
       - roles: comma-separated string
     """
-    roles: Set[str] = set()
+    roles: set[str] = set()
     if "roles" in claims:
         raw = claims["roles"]
         if isinstance(raw, list):
@@ -64,7 +67,7 @@ def _extract_roles(claims: Dict[str, Any]) -> Set[str]:
     return roles
 
 
-def require_roles(required: Set[str]):
+def require_roles(required: set[str]):
     """
     FastAPI dependency that enforces presence of at least one required role when RBAC is enabled.
 
@@ -79,7 +82,7 @@ def require_roles(required: Set[str]):
 
     required_norm = {r.strip().lower() for r in required if r and r.strip()}
 
-    async def _dependency(request: Request) -> Dict[str, Any]:
+    async def _dependency(request: Request) -> dict[str, Any]:
         settings = get_settings()
         if not getattr(settings, "enable_rbac", False):
             # RBAC disabled; allow through without token
@@ -87,13 +90,17 @@ def require_roles(required: Set[str]):
 
         token = get_bearer_token(request)
         if not token:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing bearer token")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Missing bearer token"
+            )
 
         secret = getattr(settings, "jwt_secret", None)
-        algos: List[str] = getattr(settings, "jwt_algorithms", []) or ["HS256"]
+        algos: list[str] = getattr(settings, "jwt_algorithms", []) or ["HS256"]
         if not secret:
             # Security hardening: do not allow RBAC enabled without secret
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="RBAC misconfigured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="RBAC misconfigured"
+            )
 
         claims = verify_jwt(token, secret, algos)
         roles = _extract_roles(claims)

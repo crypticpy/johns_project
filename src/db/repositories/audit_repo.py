@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ class AuditRepository:
         subject: str,
         action: str,
         resource: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> int:
         """
         Persist an audit log entry and return its primary key.

@@ -4,8 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
-
+from typing import Any
 
 # Imports for CLI helpers are intentionally deferred into main()
 # to ensure environment variables (offline defaults, RBAC) are set
@@ -185,21 +184,21 @@ def main() -> None:
     try:
         from sd_onboarding_analyzer.cli.app_factory import get_app  # type: ignore
         from sd_onboarding_analyzer.cli.run_pipeline import (  # type: ignore
-            run_ingest,
-            run_embed,
             run_analysis,
-            run_report,
+            run_embed,
+            run_ingest,
             run_pipeline,
+            run_report,
             to_json,
         )
     except Exception:  # pragma: no cover
         from .app_factory import get_app  # type: ignore
         from .run_pipeline import (  # type: ignore
-            run_ingest,
-            run_embed,
             run_analysis,
-            run_report,
+            run_embed,
+            run_ingest,
             run_pipeline,
+            run_report,
             to_json,
         )
 
@@ -210,7 +209,7 @@ def main() -> None:
         app = get_app()
 
         if args.cmd == "ingest":
-            payload: Dict[str, Any] = run_ingest(app, args.file, dataset_name=args.name)
+            payload: dict[str, Any] = run_ingest(app, args.file, dataset_name=args.name)
             print(to_json(payload))
             return
 

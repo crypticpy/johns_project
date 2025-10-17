@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
 
 
-def _to_2d_array(vectors: List[List[float]]) -> np.ndarray:
+def _to_2d_array(vectors: list[list[float]]) -> np.ndarray:
     """
     Convert list[list[float]] to a 2D numpy array (float32) with basic validation.
     Pure utility: no external side effects.
@@ -18,17 +16,17 @@ def _to_2d_array(vectors: List[List[float]]) -> np.ndarray:
     try:
         arr = np.asarray(vectors, dtype=np.float32)
     except Exception as e:
-        raise ValueError(f"Failed to convert vectors to array: {e}")
+        raise ValueError(f"Failed to convert vectors to array: {e}") from e
     if arr.ndim != 2:
         raise ValueError("vectors must be a 2D list (list of lists of floats)")
     return arr
 
 
 def kmeans_cluster(
-    vectors: List[List[float]],
+    vectors: list[list[float]],
     n_clusters: int,
     random_state: int = 42,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """
     K-Means clustering over embedding vectors.
 
@@ -54,11 +52,11 @@ def kmeans_cluster(
     km = KMeans(n_clusters=n_clusters, random_state=int(random_state), n_init=10)
     km.fit(X)
 
-    labels: List[int] = [int(x) for x in km.labels_.tolist()]
-    centroids: List[List[float]] = [[float(v) for v in row.tolist()] for row in km.cluster_centers_]
+    labels: list[int] = [int(x) for x in km.labels_.tolist()]
+    centroids: list[list[float]] = [[float(v) for v in row.tolist()] for row in km.cluster_centers_]
 
     # Silhouette: only when valid (≥2 clusters and enough samples)
-    sil: Optional[float] = None
+    sil: float | None = None
     unique_labels = sorted(set(labels))
     if len(unique_labels) >= 2 and X.shape[0] > n_clusters:
         try:
@@ -74,10 +72,10 @@ def kmeans_cluster(
 
 
 def hdbscan_cluster(
-    vectors: List[List[float]],
+    vectors: list[list[float]],
     min_cluster_size: int = 5,
     min_samples: int = 5,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """
     HDBSCAN clustering over embedding vectors.
 
@@ -92,7 +90,7 @@ def hdbscan_cluster(
     try:
         import hdbscan  # type: ignore  # pylint: disable=import-error
     except Exception as e:
-        raise RuntimeError(f"hdbscan dependency not available: {e}")
+        raise RuntimeError(f"hdbscan dependency not available: {e}") from e
 
     if not isinstance(min_cluster_size, int) or min_cluster_size <= 1:
         raise ValueError("min_cluster_size must be an integer greater than 1")
@@ -103,12 +101,14 @@ def hdbscan_cluster(
     if X.shape[0] < max(min_cluster_size, 2):
         raise ValueError("insufficient vectors for HDBSCAN")
 
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=int(min_cluster_size), min_samples=int(min_samples))
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=int(min_cluster_size), min_samples=int(min_samples)
+    )
     labels_np = clusterer.fit_predict(X)
-    labels: List[int] = [int(x) for x in labels_np.tolist()]
+    labels: list[int] = [int(x) for x in labels_np.tolist()]
 
     # Silhouette on non-noise points when there are ≥2 clusters
-    sil: Optional[float] = None
+    sil: float | None = None
     mask = labels_np >= 0
     if np.any(mask):
         labeled = labels_np[mask]
@@ -126,10 +126,10 @@ def hdbscan_cluster(
 
 
 def tfidf_top_terms(
-    texts: List[str],
-    assignments: List[int],
+    texts: list[str],
+    assignments: list[int],
     top_k: int = 10,
-) -> Dict[int, List[Tuple[str, float]]]:
+) -> dict[int, list[tuple[str, float]]]:
     """
     Compute TF-IDF top terms per cluster (cluster_id ≥ 0). Noise (-1) is skipped.
 
@@ -140,7 +140,11 @@ def tfidf_top_terms(
     - Vocabulary derived from all texts with fixed preprocessor/token pattern.
     - Per-cluster terms sorted by score desc, then term asc; truncated to top_k.
     """
-    if not isinstance(texts, list) or not isinstance(assignments, list) or len(texts) != len(assignments):
+    if (
+        not isinstance(texts, list)
+        or not isinstance(assignments, list)
+        or len(texts) != len(assignments)
+    ):
         raise ValueError("texts and assignments must be lists of equal length")
 
     n = len(texts)
@@ -153,18 +157,18 @@ def tfidf_top_terms(
     try:
         tfidf = vec.fit_transform([t if isinstance(t, str) else "" for t in texts])
     except Exception as e:
-        raise ValueError(f"Failed to compute TF-IDF: {e}")
+        raise ValueError(f"Failed to compute TF-IDF: {e}") from e
 
     feature_names = vec.get_feature_names_out()
     # Build per-cluster aggregated term weights
-    by_cluster: Dict[int, List[int]] = {}
+    by_cluster: dict[int, list[int]] = {}
     for idx, cid in enumerate(assignments):
         if cid is None or int(cid) < 0:
             continue  # skip noise
         cid_int = int(cid)
         by_cluster.setdefault(cid_int, []).append(idx)
 
-    result: Dict[int, List[Tuple[str, float]]] = {}
+    result: dict[int, list[tuple[str, float]]] = {}
     for cid, row_indices in by_cluster.items():
         if not row_indices:
             result[cid] = []
@@ -175,7 +179,7 @@ def tfidf_top_terms(
         sums = np.asarray(sub.sum(axis=0)).ravel()
         # Get indices of non-zero features
         nonzero_idx = np.where(sums > 0)[0]
-        terms_scores: List[Tuple[str, float]] = []
+        terms_scores: list[tuple[str, float]] = []
         for j in nonzero_idx:
             term = str(feature_names[j])
             score = float(sums[j])

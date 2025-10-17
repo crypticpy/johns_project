@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-from typing import Dict, List
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -88,7 +87,7 @@ def test_e2e_offline_pipeline_smoke() -> None:
     resp_search = client.get("/search/nn", params=params)
     assert resp_search.status_code == 200, resp_search.text
     payload_search = resp_search.json()
-    results: List[Dict] = list(payload_search.get("results") or [])
+    results: list[dict] = list(payload_search.get("results") or [])
     assert len(results) >= 1
 
     # 4) Analysis: offline analyzer, prompt_version v1

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 from ai.rerank.interface import RerankAdapter, RerankError
 
 
-def _normalize_backend(val: Optional[str]) -> Optional[Literal["builtin", "cross-encoder"]]:
+def _normalize_backend(val: str | None) -> Literal["builtin", "cross-encoder"] | None:
     if val is None:
         return None
     s = str(val).strip().lower()
@@ -17,7 +17,7 @@ def _normalize_backend(val: Optional[str]) -> Optional[Literal["builtin", "cross
     return None
 
 
-def select_reranker(backend: Optional[Literal["builtin", "cross-encoder"]] = None) -> RerankAdapter:
+def select_reranker(backend: Literal["builtin", "cross-encoder"] | None = None) -> RerankAdapter:
     """
     Select and instantiate a reranker adapter.
 

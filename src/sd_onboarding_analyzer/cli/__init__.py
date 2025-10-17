@@ -13,14 +13,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .app_factory import get_app
-from .run_pipeline import (
-    run_ingest,
-    run_embed,
-    run_analysis,
-    run_report,
-    run_pipeline,
-    to_json,
-)
+from .run_pipeline import run_analysis, run_embed, run_ingest, run_pipeline, run_report, to_json
 
 __all__ = [
     "FastAPI",
