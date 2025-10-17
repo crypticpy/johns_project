@@ -1,0 +1,48 @@
+# Ignore local development artifacts and caches
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Git and VCS
+.git/
+.gitignore
+.gitattributes
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs and packaging
+build/
+dist/
+*.egg-info/
+coverage_html_report/
+.coverage
+coverage.xml
+.cache/
+.mypy_cache/
+.pytest_cache/
+
+# Data and local databases (mounted externally if needed)
+data/
+!data/.keep
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+*.tmp
+
+# Docker artifacts
+Dockerfile~
+*.swp

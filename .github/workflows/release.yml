@@ -1,0 +1,68 @@
+name: Release (build artifacts)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build wheel and sdist, upload artifacts
+    runs-on: ubuntu-latest
+    env:
+      # Offline runtime defaults for determinism (app-level; build itself uses PyPI for build tooling)
+      APP_EMBED_BACKEND: builtin
+      ANALYZER_BACKEND: offline
+      APP_RERANK_BACKEND: builtin
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
+      APP_ENABLE_TRACING: "false"
+      PYTHONUNBUFFERED: "1"
+      SOURCE_DATE_EPOCH: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create virtual environment (.venv)
+        shell: bash
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install build backend
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          python -m pip install build
+
+      - name: Build distributions (wheel + sdist)
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          python -m build
+
+      - name: Twine check (skip if not installed)
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          if python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('twine') else 1)"; then
+            echo "twine detected; running checks..."
+            python -m twine check dist/*
+          else
+            echo "twine not installed; skipping twine check."
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sd-onboarding-analyzer-dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error

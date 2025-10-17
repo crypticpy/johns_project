@@ -1,0 +1,44 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  json:
+    (): pythonjsonlogger.jsonlogger.JsonFormatter
+    format: "%(asctime)s %(levelname)s %(name)s %(message)s %(dataset_id)s %(endpoint)s %(method)s"
+    rename_fields:
+      asctime: timestamp
+      levelname: level
+      name: logger
+    static_fields:
+      service: sd-onboarding-analyzer
+    timestamp: true
+  plain:
+    format: "%(asctime)s %(levelname)s %(name)s %(message)s"
+
+handlers:
+  console_json:
+    class: logging.StreamHandler
+    formatter: json
+    stream: ext://sys.stdout
+  console_plain:
+    class: logging.StreamHandler
+    formatter: plain
+    stream: ext://sys.stderr
+
+loggers:
+  sd_onboarding:
+    level: INFO
+    handlers: [console_json]
+    propagate: false
+  uvicorn.error:
+    level: INFO
+    handlers: [console_json]
+    propagate: false
+  uvicorn.access:
+    level: INFO
+    handlers: [console_json]
+    propagate: false
+
+root:
+  level: INFO
+  handlers: [console_json]

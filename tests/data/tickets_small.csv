@@ -1,0 +1,11 @@
+Department,extract_product,summarize_ticket,ticket_quality,resolution_complexity,Reassignment group count tracking_index
+IT,Email,Password reset failing on SSO portal,medium,medium,1
+HR,Onboarding,New hire cannot access benefits portal,low,low,0
+Finance,ERP,Invoice approval workflow stuck,medium,high,2
+IT,VPN,Users disconnected intermittently,low,medium,3
+Sales,CRM,Lead import duplicates detected,medium,medium,1
+Support,Helpdesk,High volume of ticket reassignments,high,high,4
+IT,Endpoint,Software install blocked by policy,low,medium,2
+HR,Payroll,Overtime not calculated correctly,medium,high,1
+Finance,Expense,Receipt OCR misclassification,low,low,0
+Support,Knowledge Base,Articles out of date,medium,low,0

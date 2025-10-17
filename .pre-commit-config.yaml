@@ -1,0 +1,57 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3.12
+        args: ["--line-length=100", "--target-version=py310"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: ["--fix"]
+        additional_dependencies: []
+      - id: ruff-format
+        name: ruff (format)
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        language_version: python3.12
+        args: ["--profile", "black", "--line-length", "100"]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        name: mypy (type-check)
+        language_version: python3.12
+        additional_dependencies:
+          - pydantic>=2.3,<3.0
+          - pydantic-settings>=2.0,<3.0
+          - sqlalchemy>=2.0,<3.0
+          - types-requests
+        args:
+          - --install-types
+          - --non-interactive
+
+ci:
+  autoupdate_schedule: monthly
+
+default_language_version:
+  python: python3.12

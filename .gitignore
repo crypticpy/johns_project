@@ -1,0 +1,55 @@
+# --- OS/Editor ---
+.DS_Store
+.idea/
+.vscode/
+
+# --- Environment / Secrets ---
+.env
+.env.*
+.envrc
+.python-version
+
+# --- Python bytecode & caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Build & packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
+site/
+__pypackages__/
+
+# --- Virtual environments ---
+.venv/
+venv/
+ENV/
+env/
+
+# --- Testing & coverage ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Type checkers ---
+.pytype/
+.pyre/
+
+# --- Jupyter / notebooks ---
+.ipynb_checkpoints
+
+# --- Logs & misc ---
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+
